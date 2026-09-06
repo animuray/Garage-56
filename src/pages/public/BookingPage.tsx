@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
-import { Check, ChevronRight, ChevronLeft, Wrench, Car } from 'lucide-react'
+import { Check, ChevronRight, ChevronLeft, ChevronDown, Wrench, Car } from 'lucide-react'
 import { api } from '../../api'
 import { formatPhone, isValidKZPhone } from '../../components/BookingModal'
 import { CAR_BRANDS, BrandLogo, BrandPickerModal, ModelPickerModal } from '../../components/CarFormModal'
@@ -87,6 +87,7 @@ export default function BookingPage() {
   const [carModelImageUrl, setCarModelImageUrl] = useState<string | null>(null)
   const [carYear, setCarYear] = useState('')
   const [engineType, setEngineType] = useState('Бензин')
+  const [engineTypeOpen, setEngineTypeOpen] = useState(false)
   const [engineVolume, setEngineVolume] = useState('')
   const [mileage, setMileage] = useState('')
   const [licensePlate, setLicensePlate] = useState('')
@@ -300,22 +301,30 @@ export default function BookingPage() {
                     className="input-field text-center" placeholder="Выберите модель" />
                 )}
               </div>
-              <Input label="Год выпуска" required type="text" inputMode="numeric" value={carYear} onChange={e => setCarYear(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="Год выпуска" />
-              <div className="col-span-2">
+              <div>
                 <label className="block text-xs text-gray-400 mb-1.5 font-medium">Тип двигателя <span className="text-orange-500">*</span></label>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {ENGINE_TYPES.map(t => (
-                    <button key={t} type="button" onClick={() => setEngineType(t)}
-                      className={`py-2.5 rounded-lg text-xs font-medium transition-all ${
-                        engineType === t
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-[#111] border border-[#2a2a2a] text-gray-400 hover:border-orange-500/50'
-                      }`}>
-                      {t}
-                    </button>
-                  ))}
+                <div className="relative">
+                  <button type="button" onClick={() => setEngineTypeOpen(o => !o)}
+                    className="input-field w-full flex items-center justify-between text-sm">
+                    <span className="text-white">{engineType}</span>
+                    <ChevronDown size={14} className={`text-gray-400 transition-transform ${engineTypeOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {engineTypeOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg overflow-hidden z-10 shadow-xl">
+                      {ENGINE_TYPES.map(t => (
+                        <button key={t} type="button"
+                          onClick={() => { setEngineType(t); setEngineTypeOpen(false) }}
+                          className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                            engineType === t ? 'bg-orange-500/20 text-orange-400' : 'text-gray-300 hover:bg-[#222] hover:text-white'
+                          }`}>
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
+              <Input label="Год выпуска" required type="text" inputMode="numeric" value={carYear} onChange={e => setCarYear(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="Год выпуска" />
               <Input label="Объём двигателя (л)" required type="number" step="0.1" value={engineVolume} onChange={e => setEngineVolume(e.target.value)} placeholder="Объём (л)" />
               <Input label="Пробег (км)" required type="number" value={mileage} onChange={e => setMileage(e.target.value)} placeholder="Пробег (км)" />
               <div className="col-span-2">
