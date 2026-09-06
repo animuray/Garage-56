@@ -73,7 +73,7 @@ function ServiceModal({ initial, onSave, onClose }: ModalProps) {
             <div>
               <label className="block text-xs text-gray-400 mb-1.5 font-medium">Цена (₸) <span className="text-orange-500">*</span></label>
               <input type="number" value={form.price} onChange={e => set('price')(Number(e.target.value))}
-                className="input-field" placeholder="3500" min={0} />
+                onFocus={e => e.target.select()} className="input-field" placeholder="3500" min={0} />
             </div>
             <div>
               <label className="block text-xs text-gray-400 mb-1.5 font-medium">Длительность (мин)</label>
@@ -84,7 +84,7 @@ function ServiceModal({ initial, onSave, onClose }: ModalProps) {
           <div>
             <label className="block text-xs text-gray-400 mb-1.5 font-medium">Порядок сортировки</label>
             <input type="number" value={form.sortOrder} onChange={e => set('sortOrder')(Number(e.target.value))}
-              className="input-field" placeholder="0" min={0} />
+              onFocus={e => e.target.select()} className="input-field" placeholder="0" min={0} />
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-2 font-medium">Фото</label>
