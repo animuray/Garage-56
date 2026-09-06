@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Plus, Pencil, Trash2, Clock, ToggleLeft, ToggleRight, Upload, Link } from 'lucide-react'
 import { api } from '../../api'
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
 
 interface Service {
   id: string
@@ -187,53 +187,97 @@ export default function ServicesPage() {
       ) : services.length === 0 ? (
         <div className="card p-12 text-center text-gray-500">Нет услуг. Добавьте первую.</div>
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-[#2a2a2a]">
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Название</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Описание</th>
-                <th className="text-right text-xs text-gray-500 font-medium px-4 py-3">Цена</th>
-                <th className="text-center text-xs text-gray-500 font-medium px-4 py-3">Длит.</th>
-                <th className="text-center text-xs text-gray-500 font-medium px-4 py-3">Статус</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1e1e1e]">
-              {services.map(s => (
-                <tr key={s.id} className="hover:bg-[#1a1a1a] transition-colors">
-                  <td className="px-4 py-3 text-sm text-white font-medium">{s.name}</td>
-                  <td className="px-4 py-3 text-xs text-gray-500 max-w-xs truncate">{s.description}</td>
-                  <td className="px-4 py-3 text-sm text-orange-400 font-medium text-right whitespace-nowrap">от {fmt(s.price)} ₸</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className="flex items-center justify-center gap-1 text-xs text-gray-400">
-                      <Clock size={12} /> {s.duration} мин
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <button onClick={() => toggleActive(s)} className="text-gray-400 hover:text-orange-400 transition-colors" title="Вкл/выкл">
-                      {s.isActive
-                        ? <ToggleRight size={22} className="text-green-500" />
-                        : <ToggleLeft size={22} className="text-gray-600" />}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2 justify-end">
-                      <button onClick={() => setModal({ open: true, service: s })}
-                        className="text-gray-400 hover:text-orange-400 transition-colors p-1">
-                        <Pencil size={15} />
-                      </button>
-                      <button onClick={() => setDeleteId(s.id)}
-                        className="text-gray-400 hover:text-red-400 transition-colors p-1">
-                        <Trash2 size={15} />
-                      </button>
+        <>
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {services.map(s => (
+              <div key={s.id} className="card p-4">
+                <div className="flex items-start gap-3">
+                  {s.imageUrl && (
+                    <img src={s.imageUrl} alt={s.name} className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-white font-semibold text-sm">{s.name}</div>
+                        {s.description && <div className="text-gray-500 text-xs mt-0.5 line-clamp-2">{s.description}</div>}
+                        <div className="flex items-center gap-3 mt-2">
+                          <span className="text-orange-400 text-sm font-medium">от {fmt(s.price)} ₸</span>
+                          <span className="text-gray-500 text-xs flex items-center gap-1"><Clock size={11} /> {s.duration} мин</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button onClick={() => toggleActive(s)} title="Вкл/выкл">
+                          {s.isActive
+                            ? <ToggleRight size={22} className="text-green-500" />
+                            : <ToggleLeft size={22} className="text-gray-600" />}
+                        </button>
+                        <button onClick={() => setModal({ open: true, service: s })}
+                          className="text-gray-400 hover:text-orange-400 transition-colors p-1">
+                          <Pencil size={15} />
+                        </button>
+                        <button onClick={() => setDeleteId(s.id)}
+                          className="text-gray-400 hover:text-red-400 transition-colors p-1">
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </div>
-                  </td>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block card overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#2a2a2a]">
+                  <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Название</th>
+                  <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Описание</th>
+                  <th className="text-right text-xs text-gray-500 font-medium px-4 py-3">Цена</th>
+                  <th className="text-center text-xs text-gray-500 font-medium px-4 py-3">Длит.</th>
+                  <th className="text-center text-xs text-gray-500 font-medium px-4 py-3">Статус</th>
+                  <th className="px-4 py-3" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-[#1e1e1e]">
+                {services.map(s => (
+                  <tr key={s.id} className="hover:bg-[#1a1a1a] transition-colors">
+                    <td className="px-4 py-3 text-sm text-white font-medium">{s.name}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500 max-w-xs truncate">{s.description}</td>
+                    <td className="px-4 py-3 text-sm text-orange-400 font-medium text-right whitespace-nowrap">от {fmt(s.price)} ₸</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="flex items-center justify-center gap-1 text-xs text-gray-400">
+                        <Clock size={12} /> {s.duration} мин
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button onClick={() => toggleActive(s)} className="text-gray-400 hover:text-orange-400 transition-colors" title="Вкл/выкл">
+                        {s.isActive
+                          ? <ToggleRight size={22} className="text-green-500" />
+                          : <ToggleLeft size={22} className="text-gray-600" />}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2 justify-end">
+                        <button onClick={() => setModal({ open: true, service: s })}
+                          className="text-gray-400 hover:text-orange-400 transition-colors p-1">
+                          <Pencil size={15} />
+                        </button>
+                        <button onClick={() => setDeleteId(s.id)}
+                          className="text-gray-400 hover:text-red-400 transition-colors p-1">
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {modal.open && (
