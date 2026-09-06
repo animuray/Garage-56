@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
-import { X, Wrench, Car } from 'lucide-react'
+import { X, Wrench, Car, ChevronDown } from 'lucide-react'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
 
 export interface CarData {
   make: string
   model: string
-  generation: string
   year: string
   engineType: string
   engineVolume: string
@@ -161,9 +160,9 @@ export function CarFormModal({ initialData, onSave, onClose, zIndex = 'z-[60]' }
   const [availableModels, setAvailableModels] = useState<CarModel[]>([])
   const [model, setModel] = useState(initialData?.model ?? '')
   const [modelImageUrl, setModelImageUrl] = useState<string | null>(null)
-  const [generation, setGeneration] = useState(initialData?.generation ?? '')
   const [year, setYear] = useState(initialData?.year ?? '')
   const [engineType, setEngineType] = useState(initialData?.engineType ?? 'Бензин')
+  const [engineTypeOpen, setEngineTypeOpen] = useState(false)
   const [engineVolume, setEngineVolume] = useState(initialData?.engineVolume ?? '')
   const [mileage, setMileage] = useState(initialData?.mileage ?? '')
   const [licensePlate, setLicensePlate] = useState(initialData?.licensePlate ?? '')
@@ -176,10 +175,10 @@ export function CarFormModal({ initialData, onSave, onClose, zIndex = 'z-[60]' }
       .catch(() => setAvailableModels([]))
   }, [makeId])
 
-  const canSave = make && model && generation && year && engineVolume && mileage && licensePlate
+  const canSave = make && model && year && engineVolume && mileage && licensePlate
 
   const handleSave = () => {
-    onSave({ make, model, generation, year, engineType, engineVolume, mileage, licensePlate, makeImageUrl, makeId })
+    onSave({ make, model, year, engineType, engineVolume, mileage, licensePlate, makeImageUrl, makeId })
     onClose()
   }
 
@@ -237,30 +236,33 @@ export function CarFormModal({ initialData, onSave, onClose, zIndex = 'z-[60]' }
                     className="input-field text-center text-sm" placeholder="Выберите модель" />
                 )}
               </Field>
-              <Field label="Поколение" required>
-                <input value={generation} onChange={e => setGeneration(e.target.value)}
-                  className="input-field text-center text-sm" placeholder="Выберите поколение" />
+              <Field label="Тип двигателя" required>
+                <div className="relative">
+                  <button type="button" onClick={() => setEngineTypeOpen(o => !o)}
+                    className="input-field w-full flex items-center justify-between text-sm">
+                    <span className="text-white">{engineType}</span>
+                    <ChevronDown size={14} className={`text-gray-400 transition-transform ${engineTypeOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {engineTypeOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg overflow-hidden z-10 shadow-xl">
+                      {ENGINE_TYPES.map(t => (
+                        <button key={t} type="button"
+                          onClick={() => { setEngineType(t); setEngineTypeOpen(false) }}
+                          className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                            engineType === t ? 'bg-orange-500/20 text-orange-400' : 'text-gray-300 hover:bg-[#222] hover:text-white'
+                          }`}>
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </Field>
             </div>
 
             <Field label="Год выпуска" required>
               <input type="text" inputMode="numeric" value={year} onChange={e => setYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 className="input-field text-center text-sm" placeholder="Год выпуска" />
-            </Field>
-
-            <Field label="Тип двигателя" required>
-              <div className="grid grid-cols-5 gap-1.5">
-                {ENGINE_TYPES.map(t => (
-                  <button key={t} type="button" onClick={() => setEngineType(t)}
-                    className={`py-2 rounded-lg text-xs font-medium transition-all ${
-                      engineType === t
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-[#111] border border-[#2a2a2a] text-gray-400 hover:border-orange-500/50'
-                    }`}>
-                    {t}
-                  </button>
-                ))}
-              </div>
             </Field>
 
             <div className="grid grid-cols-2 gap-3">

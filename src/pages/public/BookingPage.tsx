@@ -85,7 +85,6 @@ export default function BookingPage() {
   const [availableModels, setAvailableModels] = useState<CarModel[]>([])
   const [carModel, setCarModel] = useState('')
   const [carModelImageUrl, setCarModelImageUrl] = useState<string | null>(null)
-  const [carGeneration, setCarGeneration] = useState('')
   const [carYear, setCarYear] = useState('')
   const [engineType, setEngineType] = useState('Бензин')
   const [engineVolume, setEngineVolume] = useState('')
@@ -136,7 +135,7 @@ export default function BookingPage() {
 
   const canNext = () => {
     if (step === 0) return date && time
-    if (step === 1) return carMake && carModel && carGeneration && carYear && engineVolume && mileage && licensePlate
+    if (step === 1) return carMake && carModel && carYear && engineVolume && mileage && licensePlate
     if (step === 2) return selectedServices.length > 0
     if (step === 3) return clientName && isValidKZPhone(clientPhone) && agree
     return true
@@ -147,7 +146,7 @@ export default function BookingPage() {
     try {
       await api.book({
         date, time, clientName, clientPhone,
-        carMake, carModel, carGeneration: carGeneration || undefined, carYear: Number(carYear),
+        carMake, carModel, carYear: Number(carYear),
         licensePlate, engineType,
         engineVolume: Number(engineVolume),
         mileage: Number(mileage),
@@ -301,7 +300,6 @@ export default function BookingPage() {
                     className="input-field text-center" placeholder="Выберите модель" />
                 )}
               </div>
-              <Input label="Поколение" required value={carGeneration} onChange={e => setCarGeneration(e.target.value)} placeholder="Выберите поколение" />
               <Input label="Год выпуска" required type="text" inputMode="numeric" value={carYear} onChange={e => setCarYear(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="Год выпуска" />
               <div className="col-span-2">
                 <label className="block text-xs text-gray-400 mb-1.5 font-medium">Тип двигателя <span className="text-orange-500">*</span></label>
@@ -403,7 +401,6 @@ export default function BookingPage() {
                     <span className="text-white text-sm font-medium">{carMake} {carModel}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                    {carGeneration && <div><span className="text-gray-500">Поколение: </span><span className="text-gray-300">{carGeneration}</span></div>}
                     <div><span className="text-gray-500">Год: </span><span className="text-gray-300">{carYear}</span></div>
                     <div><span className="text-gray-500">Двигатель: </span><span className="text-gray-300">{engineType} {engineVolume}л</span></div>
                     <div><span className="text-gray-500">Пробег: </span><span className="text-gray-300">{Number(mileage).toLocaleString()} км</span></div>

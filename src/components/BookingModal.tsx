@@ -221,7 +221,6 @@ export default function BookingModal() {
                       <button type="button" onClick={() => setShowCarForm(true)} className="ml-auto text-xs text-gray-600 hover:text-orange-400 transition-colors flex-shrink-0">изменить</button>
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                      {carData.generation && <div><span className="text-gray-500">Поколение: </span><span className="text-gray-300">{carData.generation}</span></div>}
                       <div><span className="text-gray-500">Год: </span><span className="text-gray-300">{carData.year}</span></div>
                       <div><span className="text-gray-500">Двигатель: </span><span className="text-gray-300">{carData.engineType} {carData.engineVolume}л</span></div>
                       <div><span className="text-gray-500">Пробег: </span><span className="text-gray-300">{Number(carData.mileage).toLocaleString()} км</span></div>

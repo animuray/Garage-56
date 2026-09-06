@@ -76,7 +76,6 @@ export interface Car {
   corporateId?: string;
   make: string;
   model: string;
-  generation?: string;
   year: number;
   engineType: EngineType;
   engineVolume: number;

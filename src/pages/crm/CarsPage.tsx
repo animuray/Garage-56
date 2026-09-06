@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Search, X, ChevronRight, Plus, Pencil, Trash2, Check, Car as CarIcon } from 'lucide-react'
+import { Search, X, ChevronRight, ChevronDown, Plus, Pencil, Trash2, Check, Car as CarIcon } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
 import type { Car as CarType, EngineType } from '../../types'
 import { BrandPickerModal, BrandLogo, ModelPickerModal } from '../../components/CarFormModal'
 import { api } from '../../api'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
 
 const ENGINE_OPTIONS: { value: EngineType; label: string }[] = [
   { value: 'gasoline', label: 'Бензин' },
@@ -99,7 +99,7 @@ function CarDetail({ car, onClose, onEdit, onDelete }: {
   )
 }
 
-type CarForm = Omit<CarType, 'id' | 'serviceHistory'> & { generation?: string }
+type CarForm = Omit<CarType, 'id' | 'serviceHistory'>
 
 const FInput = ({ label, value, onChange, placeholder, type = 'text' }: {
   label: string; value: string | number; onChange: (v: string) => void; placeholder?: string; type?: string
@@ -126,7 +126,6 @@ function CarModal({ car, clients, corporateClients, onClose, onSave }: {
     corporateId: car?.corporateId,
     make: car?.make ?? '',
     model: car?.model ?? '',
-    generation: car?.generation ?? '',
     year: car?.year ?? new Date().getFullYear(),
     engineType: car?.engineType ?? 'gasoline',
     engineVolume: car?.engineVolume ?? 2.0,
@@ -143,6 +142,7 @@ function CarModal({ car, clients, corporateClients, onClose, onSave }: {
   const [modelImageUrl, setModelImageUrl] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [engineTypeOpen, setEngineTypeOpen] = useState(false)
 
   useEffect(() => {
     if (!makeId) { setAvailableModels([]); return }
@@ -260,28 +260,33 @@ function CarModal({ car, clients, corporateClients, onClose, onSave }: {
                   className="input-field text-sm" placeholder="Выберите модель" />
               )}
             </div>
-            <FInput label="Поколение" value={form.generation ?? ''} onChange={v => setForm(p => ({ ...p, generation: v }))} placeholder="Поколение" />
+            <div>
+              <label className="block text-xs text-gray-400 mb-1 font-medium">Тип двигателя</label>
+              <div className="relative">
+                <button type="button" onClick={() => setEngineTypeOpen(o => !o)}
+                  className="input-field w-full flex items-center justify-between text-sm">
+                  <span className="text-white">{ENGINE_LABEL[form.engineType] ?? form.engineType}</span>
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform ${engineTypeOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {engineTypeOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg overflow-hidden z-10 shadow-xl">
+                    {ENGINE_OPTIONS.map(o => (
+                      <button key={o.value} type="button"
+                        onClick={() => { setForm(p => ({ ...p, engineType: o.value })); setEngineTypeOpen(false) }}
+                        className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                          form.engineType === o.value ? 'bg-orange-500/20 text-orange-400' : 'text-gray-300 hover:bg-[#222] hover:text-white'
+                        }`}>
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <FInput label="Год" type="number" value={form.year} onChange={set('year')} placeholder="2020" />
             <FInput label="Гос. номер *" value={form.licensePlate} onChange={set('licensePlate')} placeholder="A 123 BC 01" />
-          </div>
-
-          {/* Engine type pills */}
-          <div>
-            <label className="block text-xs text-gray-400 mb-1 font-medium">Тип двигателя</label>
-            <div className="grid grid-cols-5 gap-1.5">
-              {ENGINE_OPTIONS.map(o => (
-                <button key={o.value} type="button" onClick={() => setForm(p => ({ ...p, engineType: o.value }))}
-                  className={`py-2 rounded-lg text-xs font-medium transition-all ${
-                    form.engineType === o.value
-                      ? 'bg-orange-500 text-white'
-                      : 'bg-[#111] border border-[#2a2a2a] text-gray-400 hover:border-orange-500/50'
-                  }`}>
-                  {o.label}
-                </button>
-              ))}
-            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2">

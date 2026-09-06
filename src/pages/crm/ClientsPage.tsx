@@ -64,7 +64,6 @@ function ClientEditModal({ client, onClose, onSave }: {
           await api.createCar({
             clientId: created.id,
             make: carData.make, model: carData.model,
-            generation: carData.generation || null,
             year: Number(carData.year),
             engineType: carData.engineType, engineVolume: Number(carData.engineVolume),
             mileage: Number(carData.mileage) || 0,
@@ -245,7 +244,6 @@ function ClientDetail({ client, onClose, onEdit, onDelete, brandsMap }: {
                     <span className="text-white text-sm font-medium">{car.make} {car.model}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                    {car.generation && <div><span className="text-gray-500">Поколение: </span><span className="text-gray-300">{car.generation}</span></div>}
                     <div><span className="text-gray-500">Год: </span><span className="text-gray-300">{car.year}</span></div>
                     <div><span className="text-gray-500">Двигатель: </span><span className="text-gray-300">{ENGINE_LABEL[car.engineType] ?? car.engineType} {car.engineVolume}л</span></div>
                     <div><span className="text-gray-500">Пробег: </span><span className="text-gray-300">{car.mileage.toLocaleString()} км</span></div>
