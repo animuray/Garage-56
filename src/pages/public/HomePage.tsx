@@ -121,19 +121,19 @@ export default function HomePage() {
         <div className="text-center mb-10">
           <h2 className="text-3xl font-bold text-white mb-2">ПОЧЕМУ ВЫБИРАЮТ GARAGE 56</h2>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {whyBlocks.map(b => (
-            <div key={b.id} className="card p-5 flex gap-4">
+            <div key={b.id} className="card p-5 flex gap-4 items-start">
               {b.imageUrl ? (
-                <img src={b.imageUrl} alt={b.title} className="w-12 h-12 object-cover rounded-lg flex-shrink-0" />
+                <img src={b.imageUrl} alt={b.title} className="w-12 h-12 object-cover rounded-xl flex-shrink-0" />
               ) : (
-                <div className="w-12 h-12 bg-orange-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Wrench size={22} className="text-orange-500" />
+                <div className="w-12 h-12 bg-orange-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Wrench size={24} className="text-orange-500" />
                 </div>
               )}
-              <div>
-                <h3 className="font-semibold text-white mb-1 text-sm">{b.title}</h3>
-                <p className="text-gray-400 text-xs leading-relaxed">{b.desc}</p>
+              <div className="min-w-0">
+                <h3 className="font-semibold text-white mb-1">{b.title}</h3>
+                <p className="text-gray-400 text-sm leading-relaxed">{b.desc}</p>
               </div>
             </div>
           ))}
