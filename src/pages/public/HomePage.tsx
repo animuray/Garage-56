@@ -209,7 +209,7 @@ export default function HomePage() {
                 href={`https://yandex.ru/maps/?text=${encodeURIComponent(address)}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="card overflow-hidden block relative"
+                className="card overflow-hidden block"
                 title="Открыть в Яндекс Картах"
               >
                 <iframe
@@ -220,9 +220,6 @@ export default function HomePage() {
                   className="w-full h-[260px] pointer-events-none"
                   title="Карта"
                 />
-                <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
-                  <MapPin size={10} className="text-orange-500" /> Открыть в Яндекс Картах
-                </div>
               </a>
             </div>
           )
