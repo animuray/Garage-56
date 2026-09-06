@@ -161,7 +161,7 @@ export default function HomePage() {
           })()
           return (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="card p-6 space-y-4">
+              <div className="card p-6 space-y-4 order-last md:order-first">
                 <div className="flex gap-3">
                   <MapPin className="text-orange-500 flex-shrink-0 mt-0.5" size={20} />
                   <div>
@@ -209,7 +209,7 @@ export default function HomePage() {
                 href={`https://yandex.ru/maps/?text=${encodeURIComponent(address)}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="card overflow-hidden block"
+                className="card overflow-hidden block order-first md:order-last"
                 title="Открыть в Яндекс Картах"
               >
                 <iframe
