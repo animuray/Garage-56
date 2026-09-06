@@ -204,14 +204,26 @@ export default function HomePage() {
                   Записаться онлайн
                 </button>
               </div>
-              {/* Map placeholder */}
-              <div className="card overflow-hidden min-h-[260px] flex items-center justify-center">
-                <div className="text-center text-gray-500">
-                  <MapPin size={40} className="text-orange-500 mx-auto mb-2" />
-                  <p className="text-sm">{address}</p>
-                  <p className="text-xs mt-1 text-gray-600">Карта отобразится после интеграции Google Maps</p>
+              {/* Yandex Map */}
+              <a
+                href={`https://yandex.ru/maps/?text=${encodeURIComponent(address)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="card overflow-hidden block relative"
+                title="Открыть в Яндекс Картах"
+              >
+                <iframe
+                  src={`https://yandex.ru/map-widget/v1/?text=${encodeURIComponent(address)}&z=16&lang=ru_RU`}
+                  width="100%"
+                  height="260"
+                  frameBorder="0"
+                  className="w-full h-[260px] pointer-events-none"
+                  title="Карта"
+                />
+                <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                  <MapPin size={10} className="text-orange-500" /> Открыть в Яндекс Картах
                 </div>
-              </div>
+              </a>
             </div>
           )
         })()}
