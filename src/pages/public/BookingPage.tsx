@@ -185,8 +185,8 @@ export default function BookingPage() {
       {/* Steps */}
       <div className="flex items-center mb-8">
         {STEPS.map((s, i) => (
-          <div key={s} className="flex items-center flex-1">
-            <div className="flex flex-col items-center">
+          <>
+            <div key={s} className="flex flex-col items-center">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
                 i < step ? 'bg-orange-500 text-white' :
                 i === step ? 'bg-orange-500 text-white ring-2 ring-orange-500/30' :
@@ -199,9 +199,9 @@ export default function BookingPage() {
               </span>
             </div>
             {i < STEPS.length - 1 && (
-              <div className={`flex-1 h-0.5 mx-1 transition-all ${i < step ? 'bg-orange-500' : 'bg-[#2a2a2a]'}`} />
+              <div className={`flex-1 h-0.5 mx-2 transition-all ${i < step ? 'bg-orange-500' : 'bg-[#2a2a2a]'}`} />
             )}
-          </div>
+          </>
         ))}
       </div>
 

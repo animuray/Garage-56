@@ -128,7 +128,7 @@ export default function PublicLayout() {
             <button onClick={() => { navigate('/booking'); setOpen(false) }}
               className="btn-orange text-sm text-center">Записаться</button>
             <button onClick={() => { navigate('/login'); setOpen(false) }}
-              className="text-gray-400 hover:text-white text-sm">Войти в CRM</button>
+              className="text-gray-400 hover:text-white text-sm">Вход</button>
           </div>
         )}
       </header>
