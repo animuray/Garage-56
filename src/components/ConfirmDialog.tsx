@@ -1,9 +1,10 @@
 import { X } from 'lucide-react'
 
-export function ConfirmDialog({ message, onConfirm, onCancel }: {
+export function ConfirmDialog({ message, onConfirm, onCancel, confirmLabel = 'Удалить' }: {
   message: string
   onConfirm: () => void
   onCancel: () => void
+  confirmLabel?: string
 }) {
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4" onClick={onCancel}>
@@ -20,7 +21,7 @@ export function ConfirmDialog({ message, onConfirm, onCancel }: {
         </div>
         <div className="px-5 pb-5 flex gap-2">
           <button onClick={onCancel} className="btn-outline flex-1 text-sm py-2.5">Отмена</button>
-          <button onClick={() => { onConfirm(); onCancel() }} className="flex-1 text-sm py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors">Удалить</button>
+          <button onClick={() => { onConfirm(); onCancel() }} className="flex-1 text-sm py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors">{confirmLabel}</button>
         </div>
       </div>
     </div>

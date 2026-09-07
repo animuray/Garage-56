@@ -208,7 +208,40 @@ export default function DashboardPage() {
             Все записи →
           </button>
         </div>
-        <div className="overflow-x-auto">
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-[#2a2a2a]">
+          {rangeApts.map(apt => {
+            const master = employees.find(e => e.id === apt.masterId)
+            return (
+              <div key={apt.id} onClick={() => setSelectedApt(apt)} className="p-4 cursor-pointer active:bg-orange-500/5">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-white font-medium text-sm">{apt.time}</span>
+                    <span className="text-gray-500 text-xs">{apt.date.split('-').reverse().join('.')}</span>
+                  </div>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[apt.status]}`}>
+                    {STATUS_LABELS[apt.status]}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="text-white text-sm font-medium">{apt.clientName}</span>
+                  {master && <span className="text-gray-500 text-xs">· {master.name}</span>}
+                </div>
+                {(apt.carMake || apt.licensePlate) && (
+                  <div className="text-gray-400 text-xs mb-1">{apt.carMake} {apt.carModel}{apt.licensePlate ? ` · ${apt.licensePlate}` : ''}</div>
+                )}
+                {apt.services.length > 0 && (
+                  <div className="text-gray-500 text-xs">{apt.services.slice(0, 2).join(', ')}{apt.services.length > 2 ? ` +${apt.services.length - 2}` : ''}</div>
+                )}
+              </div>
+            )
+          })}
+          {rangeApts.length === 0 && (
+            <div className="text-center text-gray-600 py-8">Записей нет</div>
+          )}
+        </div>
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="text-gray-500 text-xs border-b border-[#2a2a2a]">

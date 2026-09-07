@@ -211,7 +211,63 @@ export default function WarehousePage() {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-[#2a2a2a]">
+          {filtered.map(item => {
+            const isLow = item.quantity <= item.minQuantity
+            const isWarn = item.quantity <= item.minQuantity * 1.5 && !isLow
+            return (
+              <div key={item.id} className={`p-4 ${isLow ? 'bg-red-500/5' : ''}`}>
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="text-white font-medium text-sm">{item.name}</span>
+                      {item.brand && <span className="text-gray-500 text-xs">{item.brand}</span>}
+                    </div>
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs border ${CATEGORY_COLORS[item.category]}`}>
+                        {CATEGORY_LABELS[item.category]}
+                      </span>
+                      {isLow ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-red-400">
+                          <AlertTriangle size={10} /> Закупить
+                        </span>
+                      ) : isWarn ? (
+                        <span className="text-xs text-yellow-400">Мало</span>
+                      ) : (
+                        <span className="text-xs text-green-400">ОК</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-4 text-xs flex-wrap mb-2">
+                      <span>
+                        <span className="text-gray-500">Остаток: </span>
+                        <span className={`font-semibold ${isLow ? 'text-red-400' : isWarn ? 'text-yellow-400' : 'text-white'}`}>
+                          {item.quantity} {item.unit}
+                        </span>
+                      </span>
+                      <span className="text-gray-500">мин. {item.minQuantity} {item.unit}</span>
+                      <span className="text-gray-400">{item.price.toLocaleString('ru-RU')} ₸/ед.</span>
+                    </div>
+                    <StockBar quantity={item.quantity} min={item.minQuantity} />
+                  </div>
+                  <div className="flex gap-1.5 flex-shrink-0">
+                    <button onClick={() => setModal(item)} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#2a2a2a] transition-colors">
+                      <Pencil size={13} />
+                    </button>
+                    <button onClick={() => setDeleting(item)} className="p-1.5 rounded text-red-400 hover:bg-red-500/10 transition-colors">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+          {filtered.length === 0 && (
+            <div className="text-center text-gray-600 py-10">Позиций не найдено</div>
+          )}
+        </div>
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-gray-500 text-xs border-b border-[#2a2a2a] bg-[#111]">

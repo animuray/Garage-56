@@ -487,7 +487,41 @@ export default function ClientsPage() {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-[#2a2a2a]">
+          {loading ? (
+            <div className="text-center text-gray-600 py-10">Загрузка...</div>
+          ) : clients.length === 0 ? (
+            <div className="text-center text-gray-600 py-10">Клиентов не найдено</div>
+          ) : clients.map(client => (
+            <div key={client.id} onClick={() => setSelected(client)} className="p-4 cursor-pointer active:bg-[#1a1a1a]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#2a2a2a] flex items-center justify-center text-orange-400 font-bold text-lg flex-shrink-0">
+                  {client.name[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-white font-medium text-sm">{client.name}</span>
+                    {client.isRegular && <Star size={11} className="text-orange-400 flex-shrink-0" fill="currentColor" />}
+                  </div>
+                  <div className="text-gray-500 text-xs flex items-center gap-1"><Phone size={11} />{client.phone}</div>
+                  {client.lastVisit && (
+                    <div className="text-gray-600 text-xs mt-0.5">Визит: {client.lastVisit.split('-').reverse().join('.')}</div>
+                  )}
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className="text-green-400 text-sm font-medium">{(client.totalSpent ?? 0).toLocaleString('ru-RU')} ₸</div>
+                  <div className="text-gray-500 text-xs">{client.visitCount} визит.</div>
+                  {client.cars.length > 0 && (
+                    <div className="text-gray-600 text-xs flex items-center justify-end gap-1 mt-0.5"><Car size={11} />{client.cars.length}</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-gray-500 text-xs border-b border-[#2a2a2a] bg-[#111]">

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Plus, X, Check, UserX, UserCheck, Pencil, Search } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import type { Employee, Role } from '../../types'
 
 const ROLE_LABELS: Record<Role, string> = {
@@ -123,6 +124,7 @@ export default function EmployeesPage() {
   const [modal, setModal] = useState<'add' | Employee | null>(null)
   const [showInactive, setShowInactive] = useState(false)
   const [search, setSearch] = useState('')
+  const [confirmDeactivate, setConfirmDeactivate] = useState<Employee | null>(null)
 
   const visible = employees.filter(e => {
     if (!showInactive && !e.isActive) return false
@@ -142,11 +144,11 @@ export default function EmployeesPage() {
     }
   }
 
-  const handleDeactivate = async (emp: Employee) => {
+  const handleDeactivate = (emp: Employee) => {
     if (emp.isActive) {
-      await deactivateEmployee(emp.id)
+      setConfirmDeactivate(emp)
     } else {
-      await updateEmployee(emp.id, {
+      updateEmployee(emp.id, {
         name: emp.name, email: emp.email, role: emp.role,
         phone: emp.phone, specialization: emp.specialization, isActive: true,
       })
@@ -187,61 +189,105 @@ export default function EmployeesPage() {
       </label>
 
       <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-gray-500 text-xs border-b border-[#2a2a2a] bg-[#111]">
-              <th className="text-left px-4 py-3 font-medium">Сотрудник</th>
-              <th className="text-left px-4 py-3 font-medium">Роль</th>
-              <th className="text-left px-4 py-3 font-medium">Специализация</th>
-              <th className="text-left px-4 py-3 font-medium">Телефон</th>
-              <th className="text-left px-4 py-3 font-medium">Статус</th>
-              <th className="px-4 py-3 font-medium">Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map(emp => (
-              <tr key={emp.id} className={`border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors ${!emp.isActive ? 'opacity-50' : ''}`}>
-                <td className="px-4 py-3">
-                  <div className="text-white font-medium">{emp.name}</div>
-                  <div className="text-gray-500 text-xs">{emp.email}</div>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs border ${ROLE_COLORS[emp.role]}`}>
-                    {ROLE_LABELS[emp.role]}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-gray-400 text-xs">
-                  {emp.specialization || '—'}
-                </td>
-                <td className="px-4 py-3 text-gray-400 text-xs">
-                  {emp.phone || '—'}
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`text-xs ${emp.isActive ? 'text-green-400' : 'text-gray-600'}`}>
-                    {emp.isActive ? 'Активен' : 'Отключён'}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2">
-                    <button onClick={() => setModal(emp)}
-                      className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#2a2a2a] transition-colors"
-                      title="Редактировать">
-                      <Pencil size={14} />
-                    </button>
-                    <button onClick={() => handleDeactivate(emp)}
-                      className={`p-1.5 rounded transition-colors ${emp.isActive ? 'text-red-400 hover:bg-red-500/10' : 'text-green-400 hover:bg-green-500/10'}`}
-                      title={emp.isActive ? 'Деактивировать' : 'Активировать'}>
-                      {emp.isActive ? <UserX size={14} /> : <UserCheck size={14} />}
-                    </button>
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-[#2a2a2a]">
+          {visible.map(emp => (
+            <div key={emp.id} className={`p-4 ${!emp.isActive ? 'opacity-50' : ''}`}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#2a2a2a] flex items-center justify-center text-orange-400 font-bold text-lg flex-shrink-0">
+                  {emp.name[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                    <span className="text-white font-medium text-sm">{emp.name}</span>
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs border ${ROLE_COLORS[emp.role]}`}>
+                      {ROLE_LABELS[emp.role]}
+                    </span>
                   </div>
-                </td>
+                  <div className="text-gray-500 text-xs">{emp.email}</div>
+                  {emp.specialization && <div className="text-gray-400 text-xs mt-0.5">{emp.specialization}</div>}
+                  {emp.phone && <div className="text-gray-400 text-xs mt-0.5">{emp.phone}</div>}
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <span className={`text-xs mr-1 ${emp.isActive ? 'text-green-400' : 'text-gray-600'}`}>
+                    {emp.isActive ? 'Активен' : 'Выкл'}
+                  </span>
+                  <button onClick={() => setModal(emp)}
+                    className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#2a2a2a] transition-colors"
+                    title="Редактировать">
+                    <Pencil size={14} />
+                  </button>
+                  <button onClick={() => handleDeactivate(emp)}
+                    className={`p-1.5 rounded transition-colors ${emp.isActive ? 'text-red-400 hover:bg-red-500/10' : 'text-green-400 hover:bg-green-500/10'}`}
+                    title={emp.isActive ? 'Деактивировать' : 'Активировать'}>
+                    {emp.isActive ? <UserX size={14} /> : <UserCheck size={14} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {visible.length === 0 && (
+            <div className="text-center text-gray-600 py-10">Сотрудников нет</div>
+          )}
+        </div>
+        {/* Desktop table */}
+        <div className="hidden md:block">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-gray-500 text-xs border-b border-[#2a2a2a] bg-[#111]">
+                <th className="text-left px-4 py-3 font-medium">Сотрудник</th>
+                <th className="text-left px-4 py-3 font-medium">Роль</th>
+                <th className="text-left px-4 py-3 font-medium">Специализация</th>
+                <th className="text-left px-4 py-3 font-medium">Телефон</th>
+                <th className="text-left px-4 py-3 font-medium">Статус</th>
+                <th className="px-4 py-3 font-medium">Действия</th>
               </tr>
-            ))}
-            {visible.length === 0 && (
-              <tr><td colSpan={6} className="text-center text-gray-600 py-10">Сотрудников нет</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {visible.map(emp => (
+                <tr key={emp.id} className={`border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors ${!emp.isActive ? 'opacity-50' : ''}`}>
+                  <td className="px-4 py-3">
+                    <div className="text-white font-medium">{emp.name}</div>
+                    <div className="text-gray-500 text-xs">{emp.email}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs border ${ROLE_COLORS[emp.role]}`}>
+                      {ROLE_LABELS[emp.role]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">
+                    {emp.specialization || '—'}
+                  </td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">
+                    {emp.phone || '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs ${emp.isActive ? 'text-green-400' : 'text-gray-600'}`}>
+                      {emp.isActive ? 'Активен' : 'Отключён'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-2">
+                      <button onClick={() => setModal(emp)}
+                        className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#2a2a2a] transition-colors"
+                        title="Редактировать">
+                        <Pencil size={14} />
+                      </button>
+                      <button onClick={() => handleDeactivate(emp)}
+                        className={`p-1.5 rounded transition-colors ${emp.isActive ? 'text-red-400 hover:bg-red-500/10' : 'text-green-400 hover:bg-green-500/10'}`}
+                        title={emp.isActive ? 'Деактивировать' : 'Активировать'}>
+                        {emp.isActive ? <UserX size={14} /> : <UserCheck size={14} />}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {visible.length === 0 && (
+                <tr><td colSpan={6} className="text-center text-gray-600 py-10">Сотрудников нет</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {modal && (
@@ -249,6 +295,18 @@ export default function EmployeesPage() {
           employee={modal === 'add' ? undefined : modal}
           onClose={() => setModal(null)}
           onSave={handleSave}
+        />
+      )}
+
+      {confirmDeactivate && (
+        <ConfirmDialog
+          message={`Деактивировать сотрудника ${confirmDeactivate.name}? Он не сможет войти в систему.`}
+          confirmLabel="Да"
+          onConfirm={async () => {
+            await deactivateEmployee(confirmDeactivate.id)
+            setConfirmDeactivate(null)
+          }}
+          onCancel={() => setConfirmDeactivate(null)}
         />
       )}
     </div>

@@ -387,6 +387,7 @@ export default function AppointmentsPage() {
   const [cancelling, setCancelling] = useState<Appointment | null>(null)
   const [editing, setEditing] = useState<Appointment | null>(null)
   const [selected, setSelected] = useState<Appointment | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [brandsMap, setBrandsMap] = useState<Record<string, string | null>>({})
   const [masterOpenId, setMasterOpenId] = useState<string | null>(null)
   const [masterDropdownPos, setMasterDropdownPos] = useState({ top: 0, left: 0 })
@@ -460,7 +461,129 @@ export default function AppointmentsPage() {
         )}
       </div>
 
-      <div className="card overflow-hidden">
+      {/* ── Mobile cards ─────────────────────────────────────── */}
+      <div className="md:hidden space-y-2">
+        {filtered.length === 0 && (
+          <div className="card p-8 text-center text-gray-600 text-sm">Записей не найдено</div>
+        )}
+        {filtered.map(apt => {
+          const master = employees.find(e => e.id === apt.masterId)
+          const isOpen = expandedId === apt.id
+          const masterList = employees.filter(e => e.isActive && ['master', 'admin', 'owner'].includes((e.role ?? '').toLowerCase()))
+          const canAct = apt.status !== 'cancelled' && apt.status !== 'completed'
+          return (
+            <div key={apt.id} className="card overflow-hidden">
+              {/* Card header — always visible */}
+              <div className="p-3 cursor-pointer select-none" onClick={() => setExpandedId(isOpen ? null : apt.id)}>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="text-white text-sm font-medium">
+                    {apt.date.split('-').reverse().join('.')}
+                    {apt.time && <span className="text-gray-500 font-normal ml-1.5">{apt.time}</span>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {apt.status !== 'completed' ? (
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded ${STATUS_COLORS[apt.status]}`}>{STATUS_LABELS[apt.status]}</span>
+                    ) : apt.total ? (
+                      <span className="text-green-400 text-sm font-semibold">{apt.total.toLocaleString('ru-RU')} ₸</span>
+                    ) : null}
+                    <ChevronDown size={15} className={`text-gray-500 transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-1.5">
+                  <span className="text-white text-sm font-medium">{apt.clientName}</span>
+                  <span className="text-gray-500 text-xs">{apt.clientPhone}</span>
+                </div>
+                {apt.carMake ? (
+                  <div className="border border-[#2a2a2a] rounded-xl p-3 bg-[#0f0f0f] mt-2">
+                    <div className="flex items-center gap-2.5 mb-2">
+                      <BrandLogo brand={apt.carMake} imageUrl={brandsMap[apt.carMake]} size="sm" />
+                      <span className="text-white text-sm font-medium">{apt.carMake} {apt.carModel}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      {apt.carYear && <div><span className="text-gray-500">Год: </span><span className="text-gray-300">{apt.carYear}</span></div>}
+                      {apt.engineType && <div><span className="text-gray-500">Двигатель: </span><span className="text-gray-300">{apt.engineType} {apt.engineVolume}л</span></div>}
+                      {apt.mileage ? <div><span className="text-gray-500">Пробег: </span><span className="text-gray-300">{apt.mileage.toLocaleString()} км</span></div> : null}
+                      {apt.licensePlate && <div className="col-span-2"><span className="text-gray-500">Гос. номер: </span><span className="text-orange-400 font-bold">{apt.licensePlate}</span></div>}
+                    </div>
+                  </div>
+                ) : null}
+                {!isOpen && apt.services.length > 0 && (
+                  <div className="text-gray-600 text-xs mt-1.5 truncate">{apt.services.join(', ')}</div>
+                )}
+              </div>
+
+              {/* Expanded body */}
+              {isOpen && (
+                <div className="border-t border-[#2a2a2a] p-3 space-y-3" onClick={e => e.stopPropagation()}>
+                  {apt.services.length > 0 && (
+                    <div>
+                      <div className="text-gray-500 text-xs mb-1.5 font-medium">Услуги</div>
+                      <div className="space-y-1">
+                        {apt.services.map(s => (
+                          <div key={s} className="text-gray-300 text-sm flex items-start gap-1.5">
+                            <span className="text-orange-500 shrink-0 mt-0.5">•</span>{s}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="text-gray-500 text-xs mb-1.5 font-medium">Мастер</div>
+                    {canAct ? (
+                      <select
+                        value={apt.masterId ?? ''}
+                        onChange={e => updateAppointment(apt.id, { masterId: e.target.value || undefined })}
+                        className={`input-field text-sm ${!apt.masterId ? 'text-gray-500' : ''}`}
+                      >
+                        <option value="">— Не назначен —</option>
+                        {masterList.map(m => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="text-gray-300 text-sm">{master?.name ?? '—'}</div>
+                    )}
+                  </div>
+
+                  {canAct && (
+                    <div className="flex gap-2 pt-1">
+                      {apt.status === 'pending' && (
+                        <button onClick={() => updateAppointmentStatus(apt.id, 'in_progress')}
+                          className="flex-1 py-2.5 text-sm bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors font-medium">
+                          Подтвердить
+                        </button>
+                      )}
+                      {apt.status === 'in_progress' && (
+                        <button onClick={() => setCompleting(apt)}
+                          className="flex-1 py-2.5 text-sm bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors font-medium">
+                          Завершить
+                        </button>
+                      )}
+                      <button onClick={() => setEditing(apt)}
+                        className="flex-1 py-2.5 text-sm bg-[#2a2a2a] text-gray-300 rounded-lg hover:text-white transition-colors font-medium">
+                        Изменить
+                      </button>
+                      <button onClick={() => setCancelling(apt)}
+                        className="py-2.5 px-3 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors">
+                        <X size={15} />
+                      </button>
+                    </div>
+                  )}
+
+                  <button onClick={() => { setSelected(apt); setExpandedId(null) }}
+                    className="w-full py-2 text-xs text-gray-600 hover:text-gray-400 transition-colors border-t border-[#1a1a1a] mt-1 pt-3">
+                    Открыть детали записи →
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── Desktop table ─────────────────────────────────────── */}
+      <div className="hidden md:block card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[750px]">
             <thead>

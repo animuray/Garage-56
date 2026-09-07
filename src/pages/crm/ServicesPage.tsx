@@ -177,8 +177,10 @@ export default function ServicesPage() {
           <h1 className="text-xl font-bold text-white">Услуги</h1>
           <p className="text-gray-500 text-sm">Управление услугами сервиса</p>
         </div>
-        <button onClick={() => setModal({ open: true, service: null })} className="btn-orange flex items-center gap-2 text-sm">
-          <Plus size={16} /> Добавить услугу
+        <button onClick={() => setModal({ open: true, service: null })} className="btn-orange flex items-center gap-1.5 text-sm px-3 py-2 sm:px-4">
+          <Plus size={15} />
+          <span className="hidden sm:inline">Добавить услугу</span>
+          <span className="sm:hidden">Добавить</span>
         </button>
       </div>
 

@@ -446,7 +446,39 @@ export default function CarsPage() {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-[#2a2a2a]">
+          {filtered.map(car => {
+            const nextDays = car.nextService
+              ? Math.ceil((new Date(car.nextService).getTime() - Date.now()) / 86400000)
+              : null
+            const soonService = nextDays !== null && nextDays < 30
+            return (
+              <div key={car.id} onClick={() => setSelected(car)} className="p-4 cursor-pointer active:bg-[#1a1a1a]">
+                <div className="flex items-center gap-3">
+                  <BrandLogo brand={car.make} imageUrl={brandsMap[car.make]} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                      <span className="text-white font-medium text-sm">{car.make} {car.model}</span>
+                      <span className="text-orange-400 font-bold text-sm">{car.licensePlate}</span>
+                    </div>
+                    <div className="text-gray-500 text-xs">{car.year} · {ENGINE_LABEL[car.engineType]} {car.engineVolume}л · {car.ownerName}</div>
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center gap-4 text-xs flex-wrap">
+                  <span className="text-gray-400">{car.mileage.toLocaleString()} км</span>
+                  {soonService && <span className="text-orange-400">ТО скоро ⚠️</span>}
+                  <span className={car.serviceHistory.length > 0 ? 'text-green-400' : 'text-gray-600'}>{car.serviceHistory.length} зап.</span>
+                </div>
+              </div>
+            )
+          })}
+          {filtered.length === 0 && (
+            <div className="text-center text-gray-600 py-10">Автомобилей не найдено</div>
+          )}
+        </div>
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-gray-500 text-xs border-b border-[#2a2a2a] bg-[#111]">
