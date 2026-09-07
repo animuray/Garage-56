@@ -4,8 +4,9 @@ import { Check, ChevronRight, ChevronLeft, ChevronDown, Wrench, Car } from 'luci
 import { api } from '../../api'
 import { formatPhone, isValidKZPhone } from '../../components/BookingModal'
 import { CAR_BRANDS, BrandLogo, BrandPickerModal, ModelPickerModal } from '../../components/CarFormModal'
+import { PlateInput } from '../../components/PlateInput'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
 
 interface CarModel { id: number; name: string; imageUrl: string | null }
 
@@ -88,6 +89,8 @@ export default function BookingPage() {
   const [carYear, setCarYear] = useState('')
   const [engineType, setEngineType] = useState('Бензин')
   const [engineTypeOpen, setEngineTypeOpen] = useState(false)
+  const [carYearOpen, setCarYearOpen] = useState(false)
+  const YEARS = Array.from({ length: new Date().getFullYear() - 1959 }, (_, i) => new Date().getFullYear() - i)
   const [engineVolume, setEngineVolume] = useState('')
   const [mileage, setMileage] = useState('')
   const [licensePlate, setLicensePlate] = useState('')
@@ -137,7 +140,7 @@ export default function BookingPage() {
   const canNext = () => {
     if (step === 0) return date && time
     if (step === 1) return carMake && carModel && carYear && engineVolume && mileage && licensePlate
-    if (step === 2) return selectedServices.length > 0
+    if (step === 2) return true
     if (step === 3) return clientName && isValidKZPhone(clientPhone) && agree
     return true
   }
@@ -154,6 +157,7 @@ export default function BookingPage() {
         services: selectedServices,
       })
       setSubmitted(true)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch {
       // show error inline if needed
     } finally {
@@ -324,11 +328,51 @@ export default function BookingPage() {
                   )}
                 </div>
               </div>
-              <Input label="Год выпуска" required type="text" inputMode="numeric" value={carYear} onChange={e => setCarYear(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="Год выпуска" />
-              <Input label="Объём двигателя (л)" required type="number" step="0.1" value={engineVolume} onChange={e => setEngineVolume(e.target.value)} placeholder="Объём (л)" />
-              <Input label="Пробег (км)" required type="number" value={mileage} onChange={e => setMileage(e.target.value)} placeholder="Пробег (км)" />
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5 font-medium">Год выпуска <span className="text-orange-500">*</span></label>
+                <div className="relative">
+                  <button type="button" onClick={() => setCarYearOpen(o => !o)}
+                    className="input-field w-full flex items-center justify-between text-sm">
+                    <span className={carYear ? 'text-white' : 'text-gray-600'}>{carYear || 'Год'}</span>
+                    <ChevronDown size={14} className={`text-gray-400 transition-transform ${carYearOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {carYearOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg overflow-y-auto z-20 shadow-xl" style={{ maxHeight: '240px' }}>
+                      {YEARS.map(y => (
+                        <button key={y} type="button"
+                          onClick={() => { setCarYear(String(y)); setCarYearOpen(false) }}
+                          className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                            carYear === String(y) ? 'bg-orange-500/20 text-orange-400' : 'text-gray-300 hover:bg-[#222] hover:text-white'
+                          }`}>
+                          {y}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5 font-medium">Объём двигателя (л) <span className="text-orange-500">*</span></label>
+                <input type="number" step="0.1" min="0.1" max="7.3" value={engineVolume}
+                  onChange={e => setEngineVolume(e.target.value)}
+                  onBlur={() => {
+                    const v = parseFloat(engineVolume)
+                    if (!isNaN(v)) setEngineVolume(String(Math.min(7.3, Math.max(0.1, v))))
+                  }}
+                  className="input-field text-center" placeholder="Объём (л)" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5 font-medium">Пробег (км) <span className="text-orange-500">*</span></label>
+                <input type="number" min="0" max="1000000" value={mileage}
+                  onChange={e => setMileage(e.target.value)}
+                  onBlur={() => {
+                    const v = parseFloat(mileage)
+                    if (!isNaN(v)) setMileage(String(Math.min(1000000, Math.max(0, v))))
+                  }}
+                  className="input-field text-center" placeholder="Пробег (км)" />
+              </div>
               <div className="col-span-2">
-                <Input label="Гос. номер" required value={licensePlate} onChange={e => setLicensePlate(e.target.value.toUpperCase())} placeholder="Гос. номер" />
+                <PlateInput value={licensePlate} onChange={setLicensePlate} required />
               </div>
             </div>
           </div>
@@ -365,9 +409,6 @@ export default function BookingPage() {
                 </label>
               ))}
             </div>
-            {selectedServices.length === 0 && (
-              <p className="text-orange-400 text-xs mt-2">Выберите хотя бы одну услугу</p>
-            )}
           </div>
         )}
 
@@ -376,7 +417,7 @@ export default function BookingPage() {
           <div>
             <h3 className="font-semibold text-white mb-4">4. Ваши контакты</h3>
             <div className="space-y-4 mb-4">
-              <Input label="Ваше имя" required value={clientName} onChange={e => setClientName(e.target.value)} placeholder="" />
+              <input required placeholder="Имя" className="input-field text-left" value={clientName} onChange={e => setClientName(e.target.value)} />
               <div>
                 <label className="block text-xs text-gray-400 mb-1.5 font-medium">Телефон <span className="text-orange-500">*</span></label>
                 <input
@@ -420,7 +461,11 @@ export default function BookingPage() {
 
               <div className="text-sm">
                 <span className="text-gray-500 text-xs">Услуги</span>
-                <div className="text-white mt-0.5">{selectedServices.join(', ')}</div>
+                {selectedServices.length > 0 ? (
+                  <div className="text-white mt-0.5">{selectedServices.join(', ')}</div>
+                ) : (
+                  <div className="text-gray-500 text-xs mt-0.5 italic">Не выбраны — уточним при звонке</div>
+                )}
               </div>
             </div>
 

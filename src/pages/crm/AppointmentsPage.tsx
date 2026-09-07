@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Search, X, Check, Plus } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { Search, X, Check, Plus, ChevronDown } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
 import type { Appointment, AppointmentStatus } from '../../types'
 import { BrandLogo } from '../../components/CarFormModal'
@@ -7,11 +8,11 @@ import DatePicker from '../../components/DatePicker'
 import { api } from '../../api'
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
-  confirmed: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
-  in_progress: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
-  completed: 'bg-green-500/20 text-green-400 border border-green-500/30',
-  cancelled: 'bg-red-500/20 text-red-400 border border-red-500/30',
+  pending: 'bg-yellow-500/20 text-yellow-400',
+  confirmed: 'bg-blue-500/20 text-blue-400',
+  in_progress: 'bg-orange-500/20 text-orange-400',
+  completed: 'bg-green-500/20 text-green-400',
+  cancelled: 'bg-red-500/20 text-red-400',
 }
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Ожидает', confirmed: 'Подтверждено', in_progress: 'В работе',
@@ -35,6 +36,11 @@ function CompleteModal({ apt, onClose, onSave }: { apt: Appointment; onClose: ()
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [serviceCatalog, setServiceCatalog] = useState<{ name: string; price: number }[]>([])
+
+  useEffect(() => {
+    api.getServices().then(d => setServiceCatalog(d as { name: string; price: number }[])).catch(() => {})
+  }, [])
 
   const selectedOil = oils.find(i => i.id === oilItemId)
   const total = Object.values(servicePrices).reduce((sum, p) => sum + (Number(p) || 0), 0)
@@ -112,7 +118,8 @@ function CompleteModal({ apt, onClose, onSave }: { apt: Appointment; onClose: ()
           <div className="grid grid-cols-3 gap-2">
             <div className="col-span-2">
               <label className="block text-xs text-gray-400 mb-1 font-medium">Масло *</label>
-              <select value={oilItemId} onChange={e => setOilItemId(e.target.value)} className="input-field text-sm appearance-none">
+              <select value={oilItemId} onChange={e => setOilItemId(e.target.value)}
+                className={`input-field text-sm appearance-none ${!oilItemId ? 'text-gray-500' : ''}`}>
                 <option value="">— Выбрать со склада —</option>
                 {oils.map(item => (
                   <option key={item.id} value={item.id}>
@@ -124,7 +131,7 @@ function CompleteModal({ apt, onClose, onSave }: { apt: Appointment; onClose: ()
               {selectedOil && (
                 <div className="text-xs mt-1">
                   <span className="text-gray-500">Остаток: </span>
-                  <span className={selectedOil.quantity <= selectedOil.minQuantity ? 'text-red-400' : 'text-gray-400'}>
+                  <span className={selectedOil.quantity <= 0 ? 'text-red-400' : selectedOil.quantity <= selectedOil.minQuantity ? 'text-yellow-400' : 'text-gray-400'}>
                     {selectedOil.quantity} {selectedOil.unit}
                   </span>
                 </div>
@@ -133,14 +140,16 @@ function CompleteModal({ apt, onClose, onSave }: { apt: Appointment; onClose: ()
             <div>
               <label className="block text-xs text-gray-400 mb-1 font-medium">Литров *</label>
               <input type="number" min="0.1" step="0.1" value={liters} onChange={e => setLiters(e.target.value)}
-                placeholder="4.5" className="input-field text-sm" />
+                placeholder="4.5" disabled={!!selectedOil && selectedOil.quantity <= 0}
+                className={`input-field text-sm ${selectedOil && selectedOil.quantity <= 0 ? 'opacity-40 cursor-not-allowed' : ''}`} />
             </div>
           </div>
 
           {/* Oil filter */}
           <div>
             <label className="block text-xs text-gray-400 mb-1 font-medium">Масляный фильтр *</label>
-            <select value={oilFilterId} onChange={e => setOilFilterId(e.target.value)} className="input-field text-sm appearance-none">
+            <select value={oilFilterId} onChange={e => setOilFilterId(e.target.value)}
+              className={`input-field text-sm appearance-none ${!oilFilterId ? 'text-gray-500' : ''}`}>
               <option value="">— Выбрать со склада —</option>
               {filterItems.map(item => (
                 <option key={item.id} value={item.id}>
@@ -154,7 +163,8 @@ function CompleteModal({ apt, onClose, onSave }: { apt: Appointment; onClose: ()
           {/* Air filter */}
           <div>
             <label className="block text-xs text-gray-400 mb-1 font-medium">Воздушный фильтр</label>
-            <select value={airFilterId} onChange={e => setAirFilterId(e.target.value)} className="input-field text-sm appearance-none">
+            <select value={airFilterId} onChange={e => setAirFilterId(e.target.value)}
+              className={`input-field text-sm appearance-none ${!airFilterId ? 'text-gray-500' : ''}`}>
               <option value="">— Не использовался —</option>
               {filterItems.map(item => (
                 <option key={item.id} value={item.id}>
@@ -167,7 +177,8 @@ function CompleteModal({ apt, onClose, onSave }: { apt: Appointment; onClose: ()
           {/* Cabin filter */}
           <div>
             <label className="block text-xs text-gray-400 mb-1 font-medium">Салонный фильтр</label>
-            <select value={cabinFilterId} onChange={e => setCabinFilterId(e.target.value)} className="input-field text-sm appearance-none">
+            <select value={cabinFilterId} onChange={e => setCabinFilterId(e.target.value)}
+              className={`input-field text-sm appearance-none ${!cabinFilterId ? 'text-gray-500' : ''}`}>
               <option value="">— Не использовался —</option>
               {filterItems.map(item => (
                 <option key={item.id} value={item.id}>
@@ -187,17 +198,23 @@ function CompleteModal({ apt, onClose, onSave }: { apt: Appointment; onClose: ()
           <div>
             <label className="block text-xs text-gray-400 mb-2 font-medium">Стоимость услуг *</label>
             <div className="space-y-2">
-              {(apt.services ?? []).map(s => (
-                <div key={s}>
-                  <label className="block text-xs text-gray-500 mb-1">{s}</label>
-                  <div className="flex items-center gap-2">
-                    <input type="number" min="0" value={servicePrices[s] ?? ''}
-                      onChange={e => setServicePrices(prev => ({ ...prev, [s]: e.target.value }))}
-                      className="input-field flex-1" placeholder="Стоимость" />
-                    <span className="text-gray-500 text-sm shrink-0">₸</span>
+              {(apt.services ?? []).map(s => {
+                const catalogPrice = serviceCatalog.find(c => c.name === s)?.price
+                return (
+                  <div key={s}>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-gray-500">{s}</label>
+                      {catalogPrice ? <span className="text-xs text-gray-600">≈ {catalogPrice.toLocaleString('ru-RU')} ₸</span> : null}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input type="number" min="0" value={servicePrices[s] ?? ''}
+                        onChange={e => setServicePrices(prev => ({ ...prev, [s]: e.target.value }))}
+                        className="input-field flex-1" placeholder="Стоимость" />
+                      <span className="text-gray-500 text-sm shrink-0">₸</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
             <div className="flex justify-between items-center mt-3 pt-3 border-t border-[#2a2a2a]">
               <span className="text-gray-400 text-sm font-medium">Итого</span>
@@ -371,6 +388,15 @@ export default function AppointmentsPage() {
   const [editing, setEditing] = useState<Appointment | null>(null)
   const [selected, setSelected] = useState<Appointment | null>(null)
   const [brandsMap, setBrandsMap] = useState<Record<string, string | null>>({})
+  const [masterOpenId, setMasterOpenId] = useState<string | null>(null)
+  const [masterDropdownPos, setMasterDropdownPos] = useState({ top: 0, left: 0 })
+
+  useEffect(() => {
+    if (!masterOpenId) return
+    const close = () => setMasterOpenId(null)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [masterOpenId])
 
   useEffect(() => {
     api.getCarBrands().then(d => {
@@ -472,26 +498,63 @@ export default function AppointmentsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                      {apt.status !== 'cancelled' && apt.status !== 'completed' ? (
-                        <select
-                          value={apt.masterId || ''}
-                          onChange={e => updateAppointment(apt.id, { masterId: e.target.value || undefined })}
-                          className="input-field text-xs py-1"
-                        >
-                          <option value="">— Не назначен —</option>
-                          {employees.filter(e => e.isActive && ['master', 'admin', 'owner'].includes((e.role ?? '').toLowerCase())).map(m => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
-                        </select>
-                      ) : (
+                      {apt.status !== 'cancelled' && apt.status !== 'completed' ? (() => {
+                        const masters = employees.filter(e => e.isActive && ['master', 'admin', 'owner'].includes((e.role ?? '').toLowerCase()))
+                        const open = masterOpenId === apt.id
+                        return (
+                          <div className="inline-block">
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation()
+                                if (open) { setMasterOpenId(null); return }
+                                const rect = e.currentTarget.getBoundingClientRect()
+                                setMasterDropdownPos({ top: rect.bottom + 4, left: rect.left })
+                                setMasterOpenId(apt.id)
+                              }}
+                              className="input-field !w-auto text-xs py-1 flex items-center gap-2 whitespace-nowrap"
+                            >
+                              <span className={master ? 'text-white' : 'text-gray-500'}>
+                                {master?.name ?? '— Не назначен —'}
+                              </span>
+                              <ChevronDown size={12} className={`text-gray-400 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
+                            </button>
+                            {open && createPortal(
+                              <div
+                                className="fixed bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg z-[200] shadow-xl inline-flex flex-col"
+                                style={{ top: masterDropdownPos.top, left: masterDropdownPos.left }}
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <button type="button"
+                                  onClick={() => { updateAppointment(apt.id, { masterId: undefined }); setMasterOpenId(null) }}
+                                  className="text-left px-3 py-2 text-xs text-gray-500 hover:bg-[#222] hover:text-white transition-colors whitespace-nowrap w-full">
+                                  — Не назначен —
+                                </button>
+                                {masters.map(m => (
+                                  <button key={m.id} type="button"
+                                    onClick={() => { updateAppointment(apt.id, { masterId: m.id }); setMasterOpenId(null) }}
+                                    className={`text-left px-3 py-2 text-xs transition-colors whitespace-nowrap w-full ${
+                                      apt.masterId === m.id ? 'bg-orange-500/20 text-orange-400' : 'text-gray-300 hover:bg-[#222] hover:text-white'
+                                    }`}>
+                                    {m.name}
+                                  </button>
+                                ))}
+                              </div>,
+                              document.body
+                            )}
+                          </div>
+                        )
+                      })() : (
                         <div className="text-gray-300 text-xs">{master?.name ?? '—'}</div>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[apt.status]}`}>
-                        {STATUS_LABELS[apt.status]}
-                      </span>
-                      {apt.total ? <div className="text-green-400 text-xs mt-0.5">{apt.total.toLocaleString('ru-RU')} ₸</div> : null}
+                      {apt.status !== 'completed' && (
+                        <span className={`px-3 py-1.5 text-xs font-medium rounded whitespace-nowrap ${STATUS_COLORS[apt.status]}`}>
+                          {STATUS_LABELS[apt.status]}
+                        </span>
+                      )}
+                      {apt.total ? <div className="text-green-400 text-xs font-medium mt-0.5">{apt.total.toLocaleString('ru-RU')} ₸</div> : null}
                     </td>
                     {showActions && <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-2">
@@ -559,7 +622,7 @@ export default function AppointmentsPage() {
                 </div>
                 <div>
                   <div className="text-gray-500 text-xs mb-1">Статус</div>
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[selected.status]}`}>{STATUS_LABELS[selected.status]}</span>
+                  <span className={`px-3 py-1.5 text-xs font-medium rounded whitespace-nowrap ${STATUS_COLORS[selected.status]}`}>{STATUS_LABELS[selected.status]}</span>
                 </div>
               </div>
 

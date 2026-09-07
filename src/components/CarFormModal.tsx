@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { X, Wrench, Car, ChevronDown } from 'lucide-react'
+import { PlateInput } from './PlateInput'
 
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
 
@@ -163,6 +164,8 @@ export function CarFormModal({ initialData, onSave, onClose, zIndex = 'z-[60]' }
   const [year, setYear] = useState(initialData?.year ?? '')
   const [engineType, setEngineType] = useState(initialData?.engineType ?? 'Бензин')
   const [engineTypeOpen, setEngineTypeOpen] = useState(false)
+  const [yearOpen, setYearOpen] = useState(false)
+  const YEARS = Array.from({ length: new Date().getFullYear() - 1959 }, (_, i) => new Date().getFullYear() - i)
   const [engineVolume, setEngineVolume] = useState(initialData?.engineVolume ?? '')
   const [mileage, setMileage] = useState(initialData?.mileage ?? '')
   const [licensePlate, setLicensePlate] = useState(initialData?.licensePlate ?? '')
@@ -261,25 +264,50 @@ export function CarFormModal({ initialData, onSave, onClose, zIndex = 'z-[60]' }
             </div>
 
             <Field label="Год выпуска" required>
-              <input type="text" inputMode="numeric" value={year} onChange={e => setYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                className="input-field text-center text-sm" placeholder="Год выпуска" />
+              <div className="relative">
+                <button type="button" onClick={() => setYearOpen(o => !o)}
+                  className="input-field w-full flex items-center justify-between text-sm">
+                  <span className={year ? 'text-white' : 'text-gray-600'}>{year || 'Год'}</span>
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform ${yearOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {yearOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg overflow-y-auto z-20 shadow-xl" style={{ maxHeight: '240px' }}>
+                    {YEARS.map(y => (
+                      <button key={y} type="button"
+                        onClick={() => { setYear(String(y)); setYearOpen(false) }}
+                        className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                          year === String(y) ? 'bg-orange-500/20 text-orange-400' : 'text-gray-300 hover:bg-[#222] hover:text-white'
+                        }`}>
+                        {y}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Объём (л)" required>
-                <input type="number" step="0.1" value={engineVolume} onChange={e => setEngineVolume(e.target.value)}
+                <input type="number" step="0.1" min="0.1" max="7.3" value={engineVolume}
+                  onChange={e => setEngineVolume(e.target.value)}
+                  onBlur={() => {
+                    const v = parseFloat(engineVolume)
+                    if (!isNaN(v)) setEngineVolume(String(Math.min(7.3, Math.max(0.1, v))))
+                  }}
                   className="input-field text-center text-sm" placeholder="Объём (л)" />
               </Field>
               <Field label="Пробег (км)" required>
-                <input type="number" value={mileage} onChange={e => setMileage(e.target.value)}
+                <input type="number" min="0" max="1000000" value={mileage}
+                  onChange={e => setMileage(e.target.value)}
+                  onBlur={() => {
+                    const v = parseFloat(mileage)
+                    if (!isNaN(v)) setMileage(String(Math.min(1000000, Math.max(0, v))))
+                  }}
                   className="input-field text-center text-sm" placeholder="Пробег (км)" />
               </Field>
             </div>
 
-            <Field label="Гос. номер" required>
-              <input value={licensePlate} onChange={e => setLicensePlate(e.target.value.toUpperCase())}
-                className="input-field text-center text-sm" placeholder="Гос. номер" />
-            </Field>
+            <PlateInput value={licensePlate} onChange={setLicensePlate} required />
           </div>
 
           <div className="px-5 pb-5 pt-3 flex gap-2 border-t border-[#2a2a2a]">

@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { Eye, EyeOff, LogIn } from 'lucide-react'
 
-
 export default function LoginPage() {
   const navigate = useNavigate()
   const { login } = useAuth()
@@ -19,11 +18,11 @@ export default function LoginPage() {
     setLoading(true)
     const ok = await login(email, password)
     setLoading(false)
-    if (ok) {
-      navigate('/crm/dashboard')
-    } else {
+    if (!ok) {
       setError('Неверный email или пароль')
     }
+    // После успешного login state обновится и маршрут /login
+    // автоматически перенаправит по роли (master→/master, corporate→/corporate, остальные→/crm)
   }
 
   return (

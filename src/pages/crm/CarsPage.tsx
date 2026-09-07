@@ -3,6 +3,7 @@ import { Search, X, ChevronRight, ChevronDown, Plus, Pencil, Trash2, Check, Car 
 import { useApp } from '../../context/AppContext'
 import type { Car as CarType, EngineType } from '../../types'
 import { BrandPickerModal, BrandLogo, ModelPickerModal } from '../../components/CarFormModal'
+import { PlateInput } from '../../components/PlateInput'
 import { api } from '../../api'
 
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
@@ -143,6 +144,8 @@ function CarModal({ car, clients, corporateClients, onClose, onSave }: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [engineTypeOpen, setEngineTypeOpen] = useState(false)
+  const [yearOpen, setYearOpen] = useState(false)
+  const YEARS = Array.from({ length: new Date().getFullYear() - 1959 }, (_, i) => new Date().getFullYear() - i)
 
   useEffect(() => {
     if (!makeId) { setAvailableModels([]); return }
@@ -285,13 +288,47 @@ function CarModal({ car, clients, corporateClients, onClose, onSave }: {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <FInput label="Год" type="number" value={form.year} onChange={set('year')} placeholder="2020" />
-            <FInput label="Гос. номер *" value={form.licensePlate} onChange={set('licensePlate')} placeholder="A 123 BC 01" />
+            <div>
+              <label className="block text-xs text-gray-400 mb-1 font-medium">Год</label>
+              <div className="relative">
+                <button type="button" onClick={() => setYearOpen(o => !o)}
+                  className="input-field w-full flex items-center justify-between text-sm">
+                  <span className="text-white">{form.year}</span>
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform ${yearOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {yearOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg overflow-y-auto z-20 shadow-xl" style={{ maxHeight: '240px' }}>
+                    {YEARS.map(y => (
+                      <button key={y} type="button"
+                        onClick={() => { setForm(p => ({ ...p, year: y })); setYearOpen(false) }}
+                        className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                          form.year === y ? 'bg-orange-500/20 text-orange-400' : 'text-gray-300 hover:bg-[#222] hover:text-white'
+                        }`}>
+                        {y}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <PlateInput value={form.licensePlate ?? ''} onChange={v => setForm(p => ({ ...p, licensePlate: v }))} required />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <FInput label="Объём (л)" type="number" value={form.engineVolume} onChange={set('engineVolume')} placeholder="2.0" />
-            <FInput label="Пробег (км)" type="number" value={form.mileage} onChange={set('mileage')} placeholder="0" />
+            <div>
+              <label className="block text-xs text-gray-400 mb-1 font-medium">Объём (л)</label>
+              <input type="number" step="0.1" min="0.1" max="7.3" value={form.engineVolume}
+                onChange={e => setForm(p => ({ ...p, engineVolume: Number(e.target.value) }))}
+                onBlur={() => setForm(p => ({ ...p, engineVolume: Math.min(7.3, Math.max(0.1, p.engineVolume)) }))}
+                className="input-field text-sm" placeholder="2.0" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1 font-medium">Пробег (км)</label>
+              <input type="number" min="0" max="1000000" value={form.mileage}
+                onChange={e => setForm(p => ({ ...p, mileage: Number(e.target.value) }))}
+                onBlur={() => setForm(p => ({ ...p, mileage: Math.min(1000000, Math.max(0, p.mileage)) }))}
+                className="input-field text-sm" placeholder="0" />
+            </div>
           </div>
         </div>
         {error && (

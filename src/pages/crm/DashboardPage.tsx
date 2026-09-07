@@ -214,10 +214,10 @@ export default function DashboardPage() {
               <tr className="text-gray-500 text-xs border-b border-[#2a2a2a]">
                 <th className="text-left px-4 py-2.5 font-medium">Время</th>
                 <th className="text-left px-4 py-2.5 font-medium">Клиент</th>
+                <th className="text-left px-4 py-2.5 font-medium">Статус</th>
+                <th className="text-left px-4 py-2.5 font-medium">Мастер</th>
                 <th className="text-left px-4 py-2.5 font-medium">Автомобиль</th>
                 <th className="text-left px-4 py-2.5 font-medium">Услуги</th>
-                <th className="text-left px-4 py-2.5 font-medium">Мастер</th>
-                <th className="text-left px-4 py-2.5 font-medium">Статус</th>
               </tr>
             </thead>
             <tbody>
@@ -234,19 +234,19 @@ export default function DashboardPage() {
                       <div className="text-gray-500 text-xs">{apt.clientPhone}</div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-gray-300 text-sm">{apt.carMake} {apt.carModel}</div>
-                      <div className="text-gray-500 text-xs">{apt.licensePlate}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-gray-400 text-xs">{apt.services.slice(0, 2).join(', ')}{apt.services.length > 2 ? ` +${apt.services.length - 2}` : ''}</div>
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[apt.status]}`}>
+                        {STATUS_LABELS[apt.status]}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-gray-300 text-xs">{master?.name ?? '—'}</div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[apt.status]}`}>
-                        {STATUS_LABELS[apt.status]}
-                      </span>
+                      <div className="text-gray-300 text-sm">{apt.carMake} {apt.carModel}</div>
+                      <div className="text-gray-500 text-xs">{apt.licensePlate}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="text-gray-400 text-xs">{apt.services.slice(0, 2).join(', ')}{apt.services.length > 2 ? ` +${apt.services.length - 2}` : ''}</div>
                     </td>
                   </tr>
                 )

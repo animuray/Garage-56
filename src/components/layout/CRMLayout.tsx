@@ -87,13 +87,15 @@ export default function CRMLayout() {
 
   return (
     <div className="flex h-screen bg-[#0f0f0f] overflow-hidden">
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex w-56 bg-[#141414] border-r border-[#2a2a2a] flex-col flex-shrink-0">
-        <SidebarContent />
-      </aside>
+      {/* Desktop sidebar — hidden for master */}
+      {user?.role !== 'master' && (
+        <aside className="hidden md:flex w-56 bg-[#141414] border-r border-[#2a2a2a] flex-col flex-shrink-0">
+          <SidebarContent />
+        </aside>
+      )}
 
-      {/* Mobile sidebar overlay */}
-      {sidebarOpen && (
+      {/* Mobile sidebar overlay — hidden for master */}
+      {sidebarOpen && user?.role !== 'master' && (
         <div className="md:hidden fixed inset-0 z-50 flex">
           <div className="w-56 bg-[#141414] border-r border-[#2a2a2a] flex flex-col">
             <SidebarContent />
@@ -104,8 +106,8 @@ export default function CRMLayout() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Mobile header */}
-        <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-[#2a2a2a] bg-[#141414] flex-shrink-0">
+        {/* Mobile header — hidden for master (master page has its own header) */}
+        <div className={`${user?.role === 'master' ? 'hidden' : 'md:hidden'} flex items-center gap-3 px-4 py-3 border-b border-[#2a2a2a] bg-[#141414] flex-shrink-0`}>
           <button onClick={() => setSidebarOpen(true)} className="text-gray-400 hover:text-white">
             <Menu size={20} />
           </button>
