@@ -51,7 +51,7 @@ export default function HomePage() {
               <span className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse" />
               Профессиональный автосервис
             </div>
-            <h1 className="text-4xl md:text-5xl font-black text-white leading-tight mb-4">
+            <h1 className="text-3xl md:text-5xl font-black text-white leading-tight mb-4">
               ПРОФЕССИОНАЛЬНАЯ<br />
               <span className="text-orange-500">ЗАМЕНА МАСЛА</span><br />
               И ТЕХНИЧЕСКОЕ<br />ОБСЛУЖИВАНИЕ

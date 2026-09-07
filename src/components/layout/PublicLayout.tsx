@@ -40,7 +40,7 @@ export default function PublicLayout() {
   })()
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f] flex flex-col">
+    <div className="min-h-screen bg-[#0f0f0f] flex flex-col overflow-x-hidden">
       {location.pathname !== '/privacy' && <BookingModal />}
       {/* Top bar */}
       <div className="bg-[#1a1a1a] border-b border-[#2a2a2a] hidden md:block">

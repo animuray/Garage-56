@@ -110,7 +110,6 @@ export function BrandPickerModal({ onSelect, onClose, zIndex = 'z-[70]' }: {
             onChange={e => setSearch(e.target.value)}
             placeholder="Поиск марки..."
             className="input-field text-sm"
-            autoFocus
           />
         </div>
         <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-6 gap-2 px-4 pb-5 max-h-72 sm:max-h-[70vh] overflow-y-auto">
@@ -382,7 +381,6 @@ export function ServicePickerModal({ onSelect, onClose, zIndex = 'z-[70]' }: {
             onChange={e => setSearch(e.target.value)}
             placeholder="Поиск услуги..."
             className="input-field text-sm"
-            autoFocus
           />
         </div>
         <div className="flex flex-col gap-2 px-4 pb-5 max-h-72 overflow-y-auto">
@@ -456,7 +454,6 @@ export function ModelPickerModal({ brandId, onSelect, onClose, zIndex = 'z-[70]'
             onChange={e => setSearch(e.target.value)}
             placeholder="Поиск модели..."
             className="input-field text-sm"
-            autoFocus
           />
         </div>
         <div className="grid grid-cols-2 gap-3 px-4 pb-5 max-h-[60vh] sm:max-h-[75vh] overflow-y-auto">
