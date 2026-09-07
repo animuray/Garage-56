@@ -83,7 +83,7 @@ export default function BookingModal() {
         comment: message,
         ...(carData ? {
           carMake: carData.make, carModel: carData.model,
-          carGeneration: carData.generation, carYear: Number(carData.year),
+          carYear: Number(carData.year),
           engineType: carData.engineType, engineVolume: Number(carData.engineVolume),
           mileage: Number(carData.mileage), licensePlate: carData.licensePlate,
         } : {}),
