@@ -9,8 +9,47 @@ const multer = require('multer')
 const path = require('path')
 const fs = require('fs')
 const AdmZip = require('adm-zip')
+const webpush = require('web-push')
 const { pool } = require('./db')
 const { normalizePhone, normalizePlate } = require('./normalize')
+
+// ─── Web Push setup ─────────────────────────────────────────────────────────
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    'mailto:admin@garage56.kz',
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  )
+}
+pool.query(`
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    endpoint TEXT UNIQUE NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`).catch(console.error)
+
+async function sendPushToAll(title, body, url) {
+  if (!process.env.VAPID_PUBLIC_KEY) return
+  try {
+    const { rows } = await pool.query('SELECT endpoint, p256dh, auth FROM push_subscriptions')
+    const payload = JSON.stringify({ title, body, url })
+    await Promise.allSettled(rows.map(row =>
+      webpush.sendNotification(
+        { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
+        payload
+      ).catch(async err => {
+        // Remove expired/invalid subscriptions
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await pool.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [row.endpoint])
+        }
+      })
+    ))
+  } catch (e) { console.error('push error:', e) }
+}
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -354,6 +393,14 @@ app.post('/api/appointments', auth, async (req, res) => {
         )
       }
     }).catch(console.error)
+    const svcLabel = Array.isArray(a.services) && a.services.length
+      ? a.services.slice(0, 2).join(', ') + (a.services.length > 2 ? ` +${a.services.length - 2}` : '')
+      : ''
+    sendPushToAll(
+      '📋 Новая запись',
+      `${a.clientName} · ${a.date} ${a.time}${svcLabel ? ' · ' + svcLabel : ''}`,
+      '/crm/appointments'
+    )
     res.json({ id: String(aptId) })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -996,6 +1043,33 @@ app.get('/api/slots', async (req, res) => {
   }
 })
 
+// ─── Push notifications ────────────────────────────────────────────────────────
+app.get('/api/push/vapid-key', (req, res) => {
+  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' })
+})
+
+app.post('/api/push/subscribe', auth, async (req, res) => {
+  try {
+    const { endpoint, keys } = req.body
+    if (!endpoint || !keys?.p256dh || !keys?.auth) return res.status(400).json({ error: 'Invalid subscription' })
+    await pool.query(
+      `INSERT INTO push_subscriptions (employee_id, endpoint, p256dh, auth)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (endpoint) DO UPDATE SET employee_id=$1, p256dh=$3, auth=$4`,
+      [req.user.id, endpoint, keys.p256dh, keys.auth]
+    )
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/push/unsubscribe', auth, async (req, res) => {
+  try {
+    const { endpoint } = req.body
+    if (endpoint) await pool.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [endpoint])
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ─── Public booking (no auth) ─────────────────────────────────────────────────
 app.post('/api/book', bookLimiter, async (req, res) => {
   try {
@@ -1027,6 +1101,12 @@ app.post('/api/book', bookLimiter, async (req, res) => {
         await pool.query('UPDATE appointments SET client_id=$1, car_id=$2 WHERE id=$3', [clientId, carId, bookAptId])
       }
     }).catch(console.error)
+    const svcLabel = bookServices.length ? bookServices.slice(0, 2).join(', ') + (bookServices.length > 2 ? ` +${bookServices.length - 2}` : '') : ''
+    sendPushToAll(
+      '📋 Новая запись',
+      `${clientName} · ${bookDate} ${bookTime}${svcLabel ? ' · ' + svcLabel : ''}`,
+      '/crm/appointments'
+    )
     res.json({ ok: true })
   } catch (e) {
     console.error(e)

@@ -2,10 +2,49 @@ import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Calendar, Users, Car, Building2,
-  Package, BarChart3, Settings, LogOut, Menu, Wrench, UserCog,
+  Package, BarChart3, Settings, LogOut, Menu, Wrench, UserCog, Bell, BellOff,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { api } from '../../api'
+
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
+
+async function registerPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js')
+    const { publicKey } = await fetch(`${API_BASE}/api/push/vapid-key`).then(r => r.json())
+    if (!publicKey) return
+    const existing = await reg.pushManager.getSubscription()
+    if (existing) {
+      await sendSub(existing)
+      return
+    }
+    const permission = await Notification.requestPermission()
+    if (permission !== 'granted') return
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    })
+    await sendSub(sub)
+  } catch (e) { console.error('push register:', e) }
+}
+
+async function sendSub(sub: PushSubscription) {
+  const token = localStorage.getItem('token')
+  await fetch(`${API_BASE}/api/push/subscribe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(sub.toJSON()),
+  })
+}
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(base64)
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
+}
 
 interface NavItem { label: string; to: string; icon: React.ReactNode; roles?: string[] }
 
@@ -29,10 +68,24 @@ export default function CRMLayout() {
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [serviceName, setServiceName] = useState('')
+  const [notifState, setNotifState] = useState<'default' | 'granted' | 'denied'>('default')
 
   useEffect(() => {
     api.getPublicInfo().then(d => setServiceName(d.name || '')).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!('Notification' in window)) return
+    setNotifState(Notification.permission as 'default' | 'granted' | 'denied')
+    if (Notification.permission === 'granted') {
+      registerPush()
+    }
+  }, [])
+
+  const handleEnableNotif = async () => {
+    await registerPush()
+    if ('Notification' in window) setNotifState(Notification.permission as 'default' | 'granted' | 'denied')
+  }
 
   const homeRoute = user?.role === 'master' ? '/master' : user?.role === 'corporate' ? '/corporate' : '/crm/dashboard'
   const visibleNav = NAV_ITEMS.filter(n => !n.roles || (user && n.roles.includes(user.role)))
@@ -75,8 +128,17 @@ export default function CRMLayout() {
         ))}
       </nav>
 
-      {/* Logout */}
-      <div className="px-3 py-3 border-t border-[#2a2a2a]">
+      {/* Notifications + Logout */}
+      <div className="px-3 py-3 border-t border-[#2a2a2a] space-y-1">
+        {notifState !== 'denied' && (
+          <button
+            onClick={handleEnableNotif}
+            className={`sidebar-link w-full ${notifState === 'granted' ? 'text-orange-400 hover:text-orange-300' : 'text-gray-400 hover:text-white'}`}
+          >
+            {notifState === 'granted' ? <Bell size={18} /> : <BellOff size={18} />}
+            <span className="text-sm">{notifState === 'granted' ? 'Уведомления вкл.' : 'Включить уведомления'}</span>
+          </button>
+        )}
         <button onClick={handleLogout} className="sidebar-link w-full text-red-400 hover:text-red-300 hover:bg-red-500/10">
           <LogOut size={18} />
           <span className="text-sm">Выйти</span>
@@ -113,13 +175,22 @@ export default function CRMLayout() {
           </button>
           <button
             onClick={() => navigate(homeRoute)}
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-1"
           >
             <img src="/logo.png" alt="logo" className="h-7 w-auto rounded" />
             {serviceName && (
               <span className="font-bold text-white text-sm tracking-wide">{serviceName}</span>
             )}
           </button>
+          {notifState !== 'denied' && (
+            <button
+              onClick={handleEnableNotif}
+              title={notifState === 'granted' ? 'Уведомления включены' : 'Включить уведомления'}
+              className={`p-1.5 rounded-lg transition-colors ${notifState === 'granted' ? 'text-orange-400' : 'text-gray-500 hover:text-white'}`}
+            >
+              {notifState === 'granted' ? <Bell size={18} /> : <BellOff size={18} />}
+            </button>
+          )}
         </div>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
