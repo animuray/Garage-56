@@ -57,8 +57,12 @@ function ItemModal({ item, onClose, onSave }: {
 
   const set = (k: keyof ItemForm) => (v: string) => setForm(p => ({ ...p, [k]: k === 'quantity' || k === 'minQuantity' || k === 'price' ? Number(v) : v }))
 
+  const isOil = form.category === 'oil'
+
   const handleSave = async () => {
     if (!form.name || !form.unit) { setError('Укажите наименование и единицу измерения'); return }
+    // Oil is billed by the liter, so its price must be known before it can be used in an order
+    if (isOil && !(form.price > 0)) { setError('Укажите цену масла за литр — она войдёт в стоимость заказа'); return }
     setSaving(true)
     setError('')
     try {
@@ -83,7 +87,11 @@ function ItemModal({ item, onClose, onSave }: {
           <FInput label="Бренд" value={form.brand ?? ''} onChange={set('brand')} placeholder="Shell" />
           <div>
             <label className="block text-xs text-gray-400 mb-1 font-medium">Категория</label>
-            <select value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value as WarehouseItem['category'] }))}
+            <select value={form.category} onChange={e => {
+              const category = e.target.value as WarehouseItem['category']
+              // oil is measured and priced in liters
+              setForm(p => ({ ...p, category, unit: category === 'oil' ? 'л' : p.unit }))
+            }}
               className="input-field text-sm">
               {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
             </select>
@@ -94,8 +102,14 @@ function ItemModal({ item, onClose, onSave }: {
           </div>
           <div className="grid grid-cols-2 gap-2">
             <FInput label="Минимальный остаток" type="number" value={form.minQuantity} onChange={set('minQuantity')} placeholder="0" />
-            <FInput label="Цена за ед. (₸)" type="number" value={form.price} onChange={set('price')} placeholder="0" />
+            <FInput label={isOil ? 'Цена за литр (₸) *' : 'Цена за ед. (₸)'} type="number" value={form.price}
+              onChange={set('price')} placeholder="0" />
           </div>
+          {isOil && (
+            <div className="text-xs text-gray-500 -mt-1">
+              Цена за 1 литр. При завершении заказа стоимость масла (литры × цена) добавляется к цене услуг.
+            </div>
+          )}
         </div>
         {error && (
           <div className="mt-3 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>
@@ -246,7 +260,9 @@ export default function WarehousePage() {
                         </span>
                       </span>
                       <span className="text-gray-500">мин. {item.minQuantity} {item.unit}</span>
-                      <span className="text-gray-400">{item.price.toLocaleString('ru-RU')} ₸/ед.</span>
+                      <span className={item.category === 'oil' && !item.price ? 'text-orange-400' : 'text-gray-400'}>
+                        {item.category === 'oil' && !item.price ? 'цена за литр не указана' : `${item.price.toLocaleString('ru-RU')} ₸/${item.unit}`}
+                      </span>
                     </div>
                     <StockBar quantity={item.quantity} min={item.minQuantity} />
                   </div>
@@ -276,7 +292,7 @@ export default function WarehousePage() {
                 <th className="text-left px-4 py-3 font-medium">Остаток</th>
                 <th className="text-left px-4 py-3 font-medium">Мин. остаток</th>
                 <th className="text-left px-4 py-3 font-medium">Уровень</th>
-                <th className="text-left px-4 py-3 font-medium">Цена / ед.</th>
+                <th className="text-left px-4 py-3 font-medium">Цена (масло — за литр)</th>
                 <th className="text-left px-4 py-3 font-medium">Статус</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -308,7 +324,11 @@ export default function WarehousePage() {
                       <StockBar quantity={item.quantity} min={item.minQuantity} />
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-gray-300 text-xs">{item.price.toLocaleString('ru-RU')} ₸</span>
+                      {item.category === 'oil' && !item.price ? (
+                        <span className="text-orange-400 text-xs">не указана</span>
+                      ) : (
+                        <span className="text-gray-300 text-xs">{item.price.toLocaleString('ru-RU')} ₸/{item.unit}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {isLow ? (

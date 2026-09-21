@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom'
 import { Search, X, Check, Plus, ChevronDown } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
 import type { Appointment, AppointmentStatus } from '../../types'
+import { appointmentRowClass } from '../../utils/appointmentStyle'
+import { OrderTag } from '../../components/OrderTags'
+import { calcOrderTotal, formatMoney } from '../../utils/pricing'
 import { BrandLogo } from '../../components/CarFormModal'
 import DatePicker from '../../components/DatePicker'
 import { api } from '../../api'
@@ -43,7 +46,8 @@ function CompleteModal({ apt, onClose, onSave }: { apt: Appointment; onClose: ()
   }, [])
 
   const selectedOil = oils.find(i => i.id === oilItemId)
-  const total = Object.values(servicePrices).reduce((sum, p) => sum + (Number(p) || 0), 0)
+  // final price = services + oil (liters × price per liter from the warehouse)
+  const { servicesTotal, pricePerLiter, oilCost, total } = calcOrderTotal(servicePrices, selectedOil, Number(liters) || 0)
 
   const getValidationError = (): string | null => {
     if (!oilItemId) return 'Выберите масло со склада'
@@ -74,7 +78,7 @@ function CompleteModal({ apt, onClose, onSave }: { apt: Appointment; onClose: ()
         status: 'completed',
         total,
         serviceRecord: {
-          oil: { brand: oilItem.brand ?? oilItem.name, viscosity: oilItem.name, liters: litersNum },
+          oil: { brand: oilItem.brand ?? oilItem.name, viscosity: oilItem.name, liters: litersNum, pricePerLiter, cost: oilCost },
           oilFilter: oilFilterItem?.name,
           airFilter: airFilterItem?.name,
           cabinFilter: cabinFilterItem?.name,
@@ -134,6 +138,10 @@ function CompleteModal({ apt, onClose, onSave }: { apt: Appointment; onClose: ()
                   <span className={selectedOil.quantity <= 0 ? 'text-red-400' : selectedOil.quantity <= selectedOil.minQuantity ? 'text-yellow-400' : 'text-gray-400'}>
                     {selectedOil.quantity} {selectedOil.unit}
                   </span>
+                  <span className="text-gray-500"> · Цена: </span>
+                  {selectedOil.price > 0
+                    ? <span className="text-gray-300">{formatMoney(selectedOil.price)}/л</span>
+                    : <span className="text-orange-400">не указана на складе</span>}
                 </div>
               )}
             </div>
@@ -216,9 +224,24 @@ function CompleteModal({ apt, onClose, onSave }: { apt: Appointment; onClose: ()
                 )
               })}
             </div>
-            <div className="flex justify-between items-center mt-3 pt-3 border-t border-[#2a2a2a]">
-              <span className="text-gray-400 text-sm font-medium">Итого</span>
-              <span className="text-white font-bold text-base">{total.toLocaleString('ru-RU')} ₸</span>
+            <div className="mt-3 pt-3 border-t border-[#2a2a2a] space-y-1.5 text-sm">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">Услуги</span>
+                <span className="text-gray-300">{formatMoney(servicesTotal)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">
+                  Масло{selectedOil && Number(liters) > 0 ? ` (${Number(liters)} л × ${formatMoney(pricePerLiter)})` : ''}
+                </span>
+                <span className="text-gray-300">{formatMoney(oilCost)}</span>
+              </div>
+              {selectedOil && !(pricePerLiter > 0) && (
+                <div className="text-xs text-orange-400">У масла не указана цена за литр — заполните её на складе, иначе оно не попадёт в стоимость.</div>
+              )}
+              <div className="flex justify-between items-center pt-1.5 border-t border-[#2a2a2a]">
+                <span className="text-gray-400 font-medium">Итого</span>
+                <span className="text-white font-bold text-base">{formatMoney(total)}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -391,6 +414,24 @@ export default function AppointmentsPage() {
   const [brandsMap, setBrandsMap] = useState<Record<string, string | null>>({})
   const [masterOpenId, setMasterOpenId] = useState<string | null>(null)
   const [masterDropdownPos, setMasterDropdownPos] = useState({ top: 0, left: 0 })
+  // bookings from the site / Telegram that arrived since this employee last opened the page (kept for this visit)
+  const [newBookings, setNewBookings] = useState<Record<string, 'site' | 'telegram'>>({})
+
+  // Runs when the page opens and again after every automatic refresh of the list (every 30 s), so a booking that
+  // arrives while the page is open gets its "new" mark too. Marked bookings stay marked until the page is left.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await api.getNewAppointments()
+        if (cancelled || r.count === 0) return
+        setNewBookings(prev => ({ ...prev, ...Object.fromEntries(r.items.map(i => [i.id, i.source])) }))
+        await api.markAppointmentsSeen()
+        window.dispatchEvent(new Event('appointments-seen'))   // clears the sidebar badge
+      } catch { /* the badge is a convenience, never block the page */ }
+    })()
+    return () => { cancelled = true }
+  }, [appointments])
 
   useEffect(() => {
     if (!masterOpenId) return
@@ -416,9 +457,9 @@ export default function AppointmentsPage() {
     const matchDate = !dateFilter || a.date === dateFilter
     return matchSearch && matchStatus && matchDate
   }).sort((a, b) => {
-    const dateCompare = b.date.localeCompare(a.date)
+    const dateCompare = a.date.localeCompare(b.date)
     if (dateCompare !== 0) return dateCompare
-    return b.time.localeCompare(a.time)
+    return a.time.localeCompare(b.time)
   })
 
   const showActions = statusFilter !== 'completed' && statusFilter !== 'cancelled'
@@ -472,7 +513,7 @@ export default function AppointmentsPage() {
           const masterList = employees.filter(e => e.isActive && ['master', 'admin', 'owner'].includes((e.role ?? '').toLowerCase()))
           const canAct = apt.status !== 'cancelled' && apt.status !== 'completed'
           return (
-            <div key={apt.id} className="card overflow-hidden">
+            <div key={apt.id} className={`card overflow-hidden ${apt.corporateId ? 'bg-orange-500/[0.05] border-l-2 border-l-orange-500' : ''}`}>
               {/* Card header — always visible */}
               <div className="p-3 cursor-pointer select-none" onClick={() => setExpandedId(isOpen ? null : apt.id)}>
                 <div className="flex items-start justify-between gap-2 mb-2">
@@ -491,6 +532,7 @@ export default function AppointmentsPage() {
                 </div>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-1.5">
                   <span className="text-white text-sm font-medium">{apt.clientName}</span>
+                  <OrderTag apt={apt} isNew={!!newBookings[apt.id]} />
                   <span className="text-gray-500 text-xs">{apt.clientPhone}</span>
                 </div>
                 {apt.carMake ? (
@@ -601,14 +643,17 @@ export default function AppointmentsPage() {
               {filtered.map(apt => {
                 const master = employees.find(e => e.id === apt.masterId)
                 return (
-                  <tr key={apt.id} className="border-b border-[#1a1a1a] hover:bg-orange-500/10 hover:border-orange-500/20 transition-colors cursor-pointer"
+                  <tr key={apt.id} className={`border-b border-[#1a1a1a] ${appointmentRowClass(apt)} ${!apt.corporateId && newBookings[apt.id] ? 'bg-orange-500/[0.05]' : ''} transition-colors cursor-pointer`}
                     onClick={() => setSelected(apt)}>
                     <td className="px-4 py-3">
                       <div className="text-white font-medium">{apt.date.split('-').reverse().join('.')}</div>
                       <div className="text-gray-500 text-xs">{apt.time || '—'}</div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-white">{apt.clientName}</div>
+                      <div className="text-white flex items-center gap-2">
+                        {apt.clientName}
+                        <OrderTag apt={apt} isNew={!!newBookings[apt.id]} />
+                      </div>
                       <div className="text-gray-500 text-xs whitespace-nowrap">{apt.clientPhone}</div>
                     </td>
                     <td className="px-4 py-3">
@@ -831,6 +876,12 @@ export default function AppointmentsPage() {
                           <div><span className="text-gray-500">Бренд: </span><span className="text-gray-200">{selected.serviceRecord.oil.brand}</span></div>
                           <div><span className="text-gray-500">Вязкость: </span><span className="text-gray-200">{selected.serviceRecord.oil.viscosity}</span></div>
                           <div><span className="text-gray-500">Объём: </span><span className="text-gray-200">{selected.serviceRecord.oil.liters} л</span></div>
+                          {!!selected.serviceRecord.oil.cost && (
+                            <div className="col-span-3 flex justify-between border-t border-[#2a2a2a] pt-2 mt-1">
+                              <span className="text-gray-500">{selected.serviceRecord.oil.liters} л × {formatMoney(selected.serviceRecord.oil.pricePerLiter ?? 0)}/л</span>
+                              <span className="text-white font-medium">{formatMoney(selected.serviceRecord.oil.cost)}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

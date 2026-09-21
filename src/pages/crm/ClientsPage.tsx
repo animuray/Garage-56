@@ -3,6 +3,9 @@ import { Search, X, User, Car, Phone, ChevronRight, Star, Filter, SortAsc, Penci
 import type { Client, Appointment } from '../../types'
 import { api } from '../../api'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { formatMoney } from '../../utils/pricing'
+import { Badge } from '../../components/ui'
+import { onLive } from '../../utils/liveEvents'
 import { BrandLogo, CarFormModal, type CarData } from '../../components/CarFormModal'
 import { formatPhone, isValidKZPhone } from '../../components/BookingModal'
 
@@ -333,6 +336,12 @@ function ClientDetail({ client, onClose, onEdit, onDelete, brandsMap }: {
                           <div><span className="text-gray-500">Бренд: </span><span className="text-gray-200">{selectedApt.serviceRecord.oil.brand}</span></div>
                           <div><span className="text-gray-500">Вязкость: </span><span className="text-gray-200">{selectedApt.serviceRecord.oil.viscosity}</span></div>
                           <div><span className="text-gray-500">Объём: </span><span className="text-gray-200">{selectedApt.serviceRecord.oil.liters} л</span></div>
+                          {!!selectedApt.serviceRecord.oil.cost && (
+                            <div className="col-span-3 flex justify-between border-t border-[#2a2a2a] pt-2 mt-1">
+                              <span className="text-gray-500">{selectedApt.serviceRecord.oil.liters} л × {formatMoney(selectedApt.serviceRecord.oil.pricePerLiter ?? 0)}/л</span>
+                              <span className="text-white font-medium">{formatMoney(selectedApt.serviceRecord.oil.cost)}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -383,6 +392,9 @@ function ClientDetail({ client, onClose, onEdit, onDelete, brandsMap }: {
   )
 }
 
+// Marks a client that appeared since this employee last looked at the page
+const NewChip = () => <Badge tone="orange" className="uppercase tracking-wide">Новый</Badge>
+
 export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
@@ -393,6 +405,20 @@ export default function ClientsPage() {
   const [editing, setEditing] = useState<Client | null | 'new'>()
   const [confirmDelete, setConfirmDelete] = useState<{ message: string; onConfirm: () => void } | null>(null)
   const [brandsMap, setBrandsMap] = useState<Record<string, string | null>>({})
+  const [newIds, setNewIds] = useState<Set<string>>(new Set())   // clients added since this employee last opened the page
+
+  // Remember which clients are new for THIS visit (merged, so several arrivals accumulate), then mark them seen
+  // so the sidebar badge clears
+  const syncNew = useCallback(async () => {
+    try {
+      const r = await api.getNewClients()
+      if (r.count === 0) return
+      setNewIds(prev => new Set([...prev, ...r.ids]))
+      await api.markClientsSeen()
+      window.dispatchEvent(new Event('clients-seen'))
+    } catch { /* the badge is a convenience, never block the page */ }
+  }, [])
+  useEffect(() => { syncNew() }, [syncNew])
 
   useEffect(() => {
     api.getCarBrands().then(d => {
@@ -415,6 +441,9 @@ export default function ClientsPage() {
   }, [search, isRegularFilter, sort])
 
   useEffect(() => { load() }, [load])
+
+  // a client that appears while the page is open: reload the list and mark it as new, no refresh needed
+  useEffect(() => onLive((e) => { if (e.type === 'client') { load(); syncNew() } }), [load, syncNew])
 
   const handleDelete = (client: Client) => {
     setConfirmDelete({
@@ -494,7 +523,8 @@ export default function ClientsPage() {
           ) : clients.length === 0 ? (
             <div className="text-center text-gray-600 py-10">Клиентов не найдено</div>
           ) : clients.map(client => (
-            <div key={client.id} onClick={() => setSelected(client)} className="p-4 cursor-pointer active:bg-[#1a1a1a]">
+            <div key={client.id} onClick={() => setSelected(client)}
+              className={`p-4 cursor-pointer active:bg-[#1a1a1a] ${newIds.has(client.id) ? 'bg-orange-500/[0.04] border-l-2 border-orange-500' : ''}`}>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-[#2a2a2a] flex items-center justify-center text-orange-400 font-bold text-lg flex-shrink-0">
                   {client.name[0]}
@@ -502,6 +532,7 @@ export default function ClientsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 mb-0.5">
                     <span className="text-white font-medium text-sm">{client.name}</span>
+                    {newIds.has(client.id) && <NewChip />}
                     {client.isRegular && <Star size={11} className="text-orange-400 flex-shrink-0" fill="currentColor" />}
                   </div>
                   <div className="text-gray-500 text-xs flex items-center gap-1"><Phone size={11} />{client.phone}</div>
@@ -542,7 +573,7 @@ export default function ClientsPage() {
               ) : clients.map(client => (
                 <tr key={client.id}
                   onClick={() => setSelected(client)}
-                  className="border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors cursor-pointer">
+                  className={`border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors cursor-pointer ${newIds.has(client.id) ? 'bg-orange-500/[0.04]' : ''}`}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-full bg-[#2a2a2a] flex items-center justify-center text-orange-400 text-sm font-medium flex-shrink-0">
@@ -551,6 +582,7 @@ export default function ClientsPage() {
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="text-white font-medium">{client.name}</span>
+                          {newIds.has(client.id) && <NewChip />}
                           {client.isRegular && <Star size={11} className="text-orange-400" fill="currentColor" />}
                         </div>
                       </div>

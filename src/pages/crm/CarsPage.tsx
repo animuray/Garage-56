@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Search, X, ChevronRight, ChevronDown, Plus, Pencil, Trash2, Check, Car as CarIcon } from 'lucide-react'
+import { Search, X, ChevronRight, ChevronDown, Plus, Pencil, Trash2, Check, Car as CarIcon, Archive, ArchiveRestore } from 'lucide-react'
+import { ActionDialog, CarSummary } from '../../components/ActionDialog'
 import { useApp } from '../../context/AppContext'
 import type { Car as CarType, EngineType } from '../../types'
 import { BrandPickerModal, BrandLogo, ModelPickerModal } from '../../components/CarFormModal'
@@ -363,8 +364,57 @@ function CarModal({ car, clients, corporateClients, onClose, onSave }: {
   )
 }
 
+// Deleted cars live here: nothing is removed from the database, only hidden from the fleet lists.
+function ArchiveList({ cars, onRestore }: { cars: CarType[]; onRestore: (car: CarType) => void }) {
+  return (
+    <div className="card overflow-hidden">
+      <div className="px-4 py-3 border-b border-[#2a2a2a] text-xs text-gray-500">
+        Удалённые автомобили. Вся история обслуживания и траты по ним сохранены и входят в отчёты. Госномер остаётся занятым — чтобы вернуть автомобиль, его нужно восстановить.
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-gray-500 text-xs border-b border-[#2a2a2a] bg-[#111]">
+              <th className="text-left px-4 py-3 font-medium">Гос. номер</th>
+              <th className="text-left px-4 py-3 font-medium">Автомобиль</th>
+              <th className="text-left px-4 py-3 font-medium">Владелец</th>
+              <th className="text-left px-4 py-3 font-medium">В архиве с</th>
+              <th className="text-left px-4 py-3 font-medium">История</th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {cars.map(car => (
+              <tr key={car.id} className="border-b border-[#1a1a1a]">
+                <td className="px-4 py-3 text-orange-400 font-bold">{car.licensePlate}</td>
+                <td className="px-4 py-3 text-white">{car.make} {car.model} <span className="text-gray-500 text-xs">{car.year}</span></td>
+                <td className="px-4 py-3 text-gray-300">{car.ownerName || '—'}</td>
+                <td className="px-4 py-3 text-gray-400 text-xs">{car.archivedAt ? new Date(car.archivedAt).toLocaleDateString('ru-RU') : '—'}</td>
+                <td className="px-4 py-3">
+                  <span className={`text-xs font-medium ${car.serviceHistory.length > 0 ? 'text-green-400' : 'text-gray-600'}`}>{car.serviceHistory.length} зап.</span>
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <button onClick={() => onRestore(car)}
+                    className="px-3 py-1.5 text-xs bg-green-500/20 text-green-400 rounded hover:bg-green-500/30 transition-colors">
+                    Восстановить
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {cars.length === 0 && (
+              <tr><td colSpan={6} className="text-center text-gray-600 py-10">В архиве пусто</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function CarsPage() {
-  const { clients, corporateClients, addCar, updateCar, deleteCar } = useApp()
+  const { clients, corporateClients, addCar, updateCar, deleteCar, refreshData } = useApp()
+  const [view, setView] = useState<'active' | 'archive'>('active')
+  const [archived, setArchived] = useState<CarType[]>([])
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<(CarType & { ownerName: string }) | null>(null)
   const [modal, setModal] = useState<'add' | (CarType & { ownerName: string }) | null>(null)
@@ -399,18 +449,40 @@ export default function CarsPage() {
     return Math.ceil((new Date(c.nextService).getTime() - Date.now()) / 86400000) < 30
   }).length
 
+  const loadArchive = () => api.getArchivedCars().then(setArchived).catch(() => {})
+  useEffect(() => { loadArchive() }, [])
+
+  const restore = async (carId: string) => {
+    await api.restoreCar(carId)
+    await Promise.all([refreshData(), loadArchive()])
+  }
+
+  // A plate that belongs to an archived car can't be added again: offer to restore that car instead of creating a copy
+  const [restoring, setRestoring] = useState<CarType | null>(null)
+  const [plateConflict, setPlateConflict] = useState<{ carId: string; label: string; plate: string } | null>(null)
+  const noteArchivedPlate = (e: unknown, plate: string) => {
+    const err = e as { code?: string; data?: { carId?: string; label?: string } }
+    if (err?.code === 'CAR_ARCHIVED' && err.data?.carId) setPlateConflict({ carId: err.data.carId, label: err.data.label ?? '', plate })
+  }
+
   const handleSave = async (form: CarForm) => {
-    if (modal === 'add') {
-      await addCar(form)
-    } else if (modal) {
-      await updateCar(modal.id, form)
-      setSelected(null)
+    try {
+      if (modal === 'add') {
+        await addCar(form)
+      } else if (modal) {
+        await updateCar(modal.id, form)
+        setSelected(null)
+      }
+    } catch (e) {
+      noteArchivedPlate(e, form.licensePlate)   // the form stays open and shows the server's message
+      throw e
     }
   }
 
   const handleDelete = async () => {
     if (!deleting) return
-    await deleteCar(deleting.id)
+    await deleteCar(deleting.id)   // moves the car to the archive
+    await loadArchive()
     setDeleting(null)
     setSelected(null)
   }
@@ -424,7 +496,18 @@ export default function CarsPage() {
         </button>
       </div>
 
-      {needService > 0 && (
+      <div className="flex gap-1 mb-4 bg-[#111] p-1 rounded-lg w-fit">
+        <button onClick={() => setView('active')}
+          className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${view === 'active' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white'}`}>
+          Автомобили ({allCars.length})
+        </button>
+        <button onClick={() => { setView('archive'); loadArchive() }}
+          className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${view === 'archive' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white'}`}>
+          Архив ({archived.length})
+        </button>
+      </div>
+
+      {view === 'active' && needService > 0 && (
         <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg px-4 py-3 mb-4 flex items-center gap-2 text-sm text-orange-400">
           <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
           {needService} {needService === 1 ? 'автомобилю' : 'автомобилям'} скоро требуется ТО (менее 30 дней)
@@ -445,6 +528,18 @@ export default function CarsPage() {
         )}
       </div>
 
+      {view === 'archive' && (
+        <ArchiveList
+          cars={archived.filter(car => {
+            const q = search.toLowerCase()
+            return !q || car.make.toLowerCase().includes(q) || car.model.toLowerCase().includes(q) ||
+              car.licensePlate.toLowerCase().includes(q) || (car.ownerName ?? '').toLowerCase().includes(q)
+          })}
+          onRestore={(car) => setRestoring(car)}
+        />
+      )}
+
+      {view === 'active' && (
       <div className="card overflow-hidden">
         {/* Mobile cards */}
         <div className="md:hidden divide-y divide-[#2a2a2a]">
@@ -556,6 +651,7 @@ export default function CarsPage() {
           </table>
         </div>
       </div>
+      )}
 
       {selected && (
         <CarDetail
@@ -577,21 +673,57 @@ export default function CarsPage() {
       )}
 
       {deleting && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setDeleting(null)}>
-          <div className="card w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold text-white mb-2">Удалить автомобиль?</h3>
-            <p className="text-gray-400 text-sm mb-1">{deleting.make} {deleting.model} {deleting.year}</p>
-            <p className="text-orange-400 text-sm font-bold mb-5">{deleting.licensePlate}</p>
-            <p className="text-gray-500 text-xs mb-5">История обслуживания также будет удалена.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setDeleting(null)} className="btn-outline flex-1">Отмена</button>
-              <button onClick={handleDelete}
-                className="flex-1 px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-colors text-sm font-medium">
-                Удалить
-              </button>
-            </div>
-          </div>
-        </div>
+        <ActionDialog
+          tone="danger" icon={<Archive size={20} />}
+          title="Удалить автомобиль?"
+          subtitle="Автомобиль будет перенесён в архив"
+          points={[
+            { kind: 'info', text: 'Пропадёт из списков сайта и Telegram-бота.' },
+            { kind: 'keep', text: 'История обслуживания, заказы и траты сохранятся и останутся в отчётах.' },
+            { kind: 'keep', text: 'Госномер останется занятым. Вернуть автомобиль можно во вкладке «Архив».' },
+          ]}
+          confirmLabel="Удалить в архив"
+          onConfirm={handleDelete}
+          onCancel={() => setDeleting(null)}
+        >
+          <CarSummary plate={deleting.licensePlate} label={`${deleting.make} ${deleting.model} · ${deleting.year}`}
+            lines={[`${deleting.serviceHistory.length} записей в техкнижке`]} />
+        </ActionDialog>
+      )}
+
+      {restoring && (
+        <ActionDialog
+          tone="success" icon={<ArchiveRestore size={20} />}
+          title="Восстановить автомобиль?"
+          subtitle="Вернуть из архива в автопарк"
+          points={[
+            { kind: 'keep', text: 'Автомобиль снова появится в списках и в Telegram-боте.' },
+            { kind: 'keep', text: 'Вся история обслуживания и заказы на месте.' },
+          ]}
+          confirmLabel="Восстановить"
+          onConfirm={async () => { await restore(restoring.id); setRestoring(null) }}
+          onCancel={() => setRestoring(null)}
+        >
+          <CarSummary plate={restoring.licensePlate} label={`${restoring.make} ${restoring.model} · ${restoring.year}`}
+            lines={[restoring.ownerName ? `Владелец: ${restoring.ownerName}` : '', `${restoring.serviceHistory.length} записей в техкнижке`]} />
+        </ActionDialog>
+      )}
+
+      {plateConflict && (
+        <ActionDialog
+          tone="success" icon={<ArchiveRestore size={20} />}
+          title="Этот госномер уже в архиве"
+          subtitle="Добавить ещё один автомобиль с таким номером нельзя"
+          points={[
+            { kind: 'info', text: 'Автомобиль с этим номером уже был в базе и был удалён в архив.' },
+            { kind: 'keep', text: 'Восстановите его — вместе со всей историей обслуживания и заказами.' },
+          ]}
+          confirmLabel="Восстановить из архива"
+          onConfirm={async () => { await restore(plateConflict.carId); setPlateConflict(null); setModal(null) }}
+          onCancel={() => setPlateConflict(null)}
+        >
+          <CarSummary plate={plateConflict.plate} label={plateConflict.label || 'Автомобиль из архива'} />
+        </ActionDialog>
       )}
     </div>
   )

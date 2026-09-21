@@ -1,4 +1,7 @@
+import type { CarDeleteRequest, Car } from './types'
+
 const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
+export const API_BASE_URL = BASE_URL
 
 function getToken(): string | null {
   return localStorage.getItem('token')
@@ -26,7 +29,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || `HTTP ${res.status}`)
+    // keep the machine-readable part (e.g. code 'CAR_ARCHIVED' + carId) so the UI can offer a way out
+    throw Object.assign(new Error(body.error || `HTTP ${res.status}`), { code: body.code as string | undefined, data: body })
   }
 
   if (res.status === 204) return undefined as T
@@ -85,6 +89,36 @@ export const api = {
     request<unknown>(`/api/corporate/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteCorporate: (id: number) =>
     request<void>(`/api/corporate/${id}`, { method: 'DELETE' }),
+  // "New bookings" notification: site / Telegram bookings since the employee last opened the Appointments page
+  getNewAppointments: () => request<{
+    count: number
+    items: { id: string; source: 'site' | 'telegram'; clientName: string; car: string; licensePlate: string; date: string; time: string }[]
+  }>('/api/appointments/new'),
+  markAppointmentsSeen: () => request<void>('/api/appointments/seen', { method: 'POST' }),
+
+  // "New clients" badge: clients added since the employee last opened the Clients page
+  getNewClients: () => request<{ count: number; ids: string[] }>('/api/clients/new'),
+  markClientsSeen: () => request<void>('/api/clients/seen', { method: 'POST' }),
+
+  // Requests from corporate clients (Telegram bot): delete a car / restore an archived car
+  getCarDeleteRequests: (status: 'pending' | 'all' = 'pending') =>
+    request<CarDeleteRequest[]>(`/api/car-delete-requests?status=${status}`),
+  approveCarDeleteRequest: (id: string) =>
+    request<void>(`/api/car-delete-requests/${id}/approve`, { method: 'POST' }),
+  rejectCarDeleteRequest: (id: string, comment: string) =>
+    request<void>(`/api/car-delete-requests/${id}/reject`, { method: 'POST', body: JSON.stringify({ comment }) }),
+  getCorporateTelegram: (id: string) =>
+    request<{
+      botUsername: string | null
+      code: string | null
+      codeExpiresAt: string | null
+      link: string | null
+      users: { id: string; name: string; username: string; isActive: boolean; createdAt: string }[]
+    }>(`/api/corporate/${id}/telegram`),
+  createConnectCode: (id: string) =>
+    request<{ code: string; expiresAt: string; link: string | null }>(`/api/corporate/${id}/connect-code`, { method: 'POST' }),
+  removeTelegramUser: (id: string) =>
+    request<void>(`/api/telegram-users/${id}`, { method: 'DELETE' }),
 
   // Cars
   getCars: () => request<unknown[]>('/api/cars'),
@@ -92,8 +126,12 @@ export const api = {
     request<unknown>('/api/cars', { method: 'POST', body: JSON.stringify(data) }),
   updateCar: (id: number, data: unknown) =>
     request<unknown>(`/api/cars/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  // "Delete" moves a car to the archive (nothing is removed from the database)
   deleteCar: (id: number) =>
     request<void>(`/api/cars/${id}`, { method: 'DELETE' }),
+  getArchivedCars: () => request<Car[]>('/api/cars?archived=1'),
+  restoreCar: (id: number | string) =>
+    request<void>(`/api/cars/${id}/restore`, { method: 'POST' }),
 
   // Warehouse
   getWarehouse: () => request<unknown[]>('/api/warehouse'),

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Calendar, Users, Car, Building2,
@@ -6,6 +6,9 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { api } from '../../api'
+import { Toasts, toastFromEvent, type ToastItem } from '../Toasts'
+import { Counter } from '../ui'
+import { subscribeLive, relayLive } from '../../utils/liveEvents'
 
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
 
@@ -69,10 +72,84 @@ export default function CRMLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [serviceName, setServiceName] = useState('')
   const [notifState, setNotifState] = useState<'default' | 'granted' | 'denied'>('default')
+  const [pendingRequests, setPendingRequests] = useState(0)   // car delete/restore requests waiting for a decision
+  const [newClients, setNewClients] = useState(0)             // clients added since the employee last opened "Клиенты"
+  const [newBookings, setNewBookings] = useState(0)           // site / Telegram bookings since the employee last opened "Записи"
+  const [toasts, setToasts] = useState<ToastItem[]>([])
+  const shownToasts = useRef<Set<string>>(new Set())            // a toast is shown once, even if the poll and the live stream both report it
+  const toastTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const knownBookingIds = useRef<Set<string> | null>(null)    // null until the first load: no toast for what was already waiting
+
+  const closeToast = (key: string) => {
+    setToasts(prev => prev.filter(t => t.key !== key))
+    const timer = toastTimers.current.get(key)
+    if (timer) { clearTimeout(timer); toastTimers.current.delete(key) }
+  }
+  const pushToast = (t: ToastItem) => {
+    if (shownToasts.current.has(t.key)) return
+    shownToasts.current.add(t.key)
+    setToasts(prev => [...prev.slice(-3), t])                 // at most 4 on screen
+    toastTimers.current.set(t.key, setTimeout(() => closeToast(t.key), 10_000))
+  }
+  useEffect(() => () => { toastTimers.current.forEach(clearTimeout) }, [])
 
   useEffect(() => {
     api.getPublicInfo().then(d => setServiceName(d.name || '')).catch(() => {})
   }, [])
+
+  // Staff notifications.
+  //  1. LIVE: the server pushes every event the moment it happens (booking, request from a taxi fleet, new client…):
+  //     a toast pops up on whatever page the employee is on, the sidebar counters update at once and the open page reloads.
+  //  2. A slow poll (every 60 s) is only a safety net, e.g. if a proxy cuts the stream. Toasts are de-duplicated by key.
+  useEffect(() => {
+    if (!user || !['admin', 'owner'].includes(user.role)) return
+    const loadRequests = () => api.getCarDeleteRequests('pending').then(r => setPendingRequests(r.length)).catch(() => {})
+    const loadClients = () => api.getNewClients().then(r => setNewClients(r.count)).catch(() => {})
+    const loadBookings = () => api.getNewAppointments().then(r => {
+      setNewBookings(r.count)
+      const ids = new Set(r.items.map(i => i.id))
+      if (knownBookingIds.current) {
+        for (const i of r.items) {
+          if (knownBookingIds.current.has(i.id)) continue
+          const t = toastFromEvent({
+            type: 'booking', source: i.source, bookingId: i.id, ts: Date.now(), url: '/crm/appointments',
+            title: i.source === 'telegram' ? 'Новая запись от таксопарка' : 'Новая запись с сайта',
+            body: [i.clientName, i.car, i.licensePlate, `${i.date.split('-').reverse().slice(0, 2).join('.')} в ${i.time}`].filter(Boolean).join(' · '),
+          })
+          if (t) pushToast(t)
+        }
+      }
+      knownBookingIds.current = ids
+    }).catch(() => {})
+    const loadAll = () => { loadRequests(); loadClients(); loadBookings() }
+    loadAll()
+
+    const stopLive = subscribeLive((e) => {
+      if (e.type === 'hello') return
+      relayLive(e)                                   // the open page reloads its own data
+      const t = toastFromEvent(e)
+      if (t) pushToast(t)
+      loadAll()                                      // sidebar counters, right now
+    })
+    const timer = setInterval(loadAll, 60_000)
+    window.addEventListener('car-requests-changed', loadRequests)
+    window.addEventListener('clients-seen', loadClients)
+    window.addEventListener('appointments-seen', loadBookings)
+    return () => {
+      stopLive()
+      clearInterval(timer)
+      window.removeEventListener('car-requests-changed', loadRequests)
+      window.removeEventListener('clients-seen', loadClients)
+      window.removeEventListener('appointments-seen', loadBookings)
+    }
+  }, [user])
+
+  const badgeFor = (to: string): { count: number; title: string } | null => {
+    if (to === '/crm/corporate' && pendingRequests > 0) return { count: pendingRequests, title: 'Запросы от таксопарков: удаление или восстановление автомобиля' }
+    if (to === '/crm/clients' && newClients > 0) return { count: newClients, title: 'Новые клиенты' }
+    if (to === '/crm/appointments' && newBookings > 0) return { count: newBookings, title: 'Новые записи: с сайта и от таксопарков' }
+    return null
+  }
 
   useEffect(() => {
     if (!('Notification' in window)) return
@@ -124,6 +201,14 @@ export default function CRMLayout() {
           >
             {item.icon}
             <span className="text-sm">{item.label}</span>
+            {(() => {
+              const badge = badgeFor(item.to)
+              return badge && (
+                <span title={badge.title} className="ml-auto">
+                  <Counter>{badge.count > 99 ? '99+' : badge.count}</Counter>
+                </span>
+              )
+            })()}
           </NavLink>
         ))}
       </nav>
@@ -197,6 +282,9 @@ export default function CRMLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Something happened (booking, request from a taxi fleet, new client…): shown at once on any page, no browser permission needed */}
+      <Toasts items={toasts} onClose={closeToast} onOpen={(t) => { closeToast(t.key); navigate(t.url) }} />
     </div>
   )
 }

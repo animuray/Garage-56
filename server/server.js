@@ -8,10 +8,14 @@ const jwt = require('jsonwebtoken')
 const multer = require('multer')
 const path = require('path')
 const fs = require('fs')
+const crypto = require('crypto')
 const AdmZip = require('adm-zip')
 const webpush = require('web-push')
 const { pool } = require('./db')
 const { normalizePhone, normalizePlate } = require('./normalize')
+const telegramBot = require('./bot')
+const { detectAppointmentEvent } = require('./bot/events')
+const telegramBotData = require('./bot/data')
 
 // ─── Web Push setup ─────────────────────────────────────────────────────────
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
@@ -49,6 +53,27 @@ async function sendPushToAll(title, body, url) {
       })
     ))
   } catch (e) { console.error('push error:', e) }
+}
+
+// ─── Live events for the CRM (Server-Sent Events) ─────────────────────────────
+// Every open CRM tab keeps one stream to /api/live. When something happens (a booking, a request from a taxi
+// fleet, a new client…) the event is pushed to all tabs at once, so notifications appear the moment it happens,
+// with no polling delay and no browser permission. Browser push (below) covers the case when no tab is open.
+const liveStreams = new Set()
+
+function broadcastLive(evt) {
+  const frame = `data: ${JSON.stringify({ ts: Date.now(), ...evt })}\n\n`
+  for (const s of liveStreams) { try { s.res.write(frame) } catch { liveStreams.delete(s) } }
+}
+
+/**
+ * Tell the staff about something. kind: booking | booking_cancelled | car_request | client | bot_linked | data.
+ * `data` is a silent "reload your lists" signal (no toast). Everything else shows a toast in every open CRM tab
+ * and is also sent as a browser push notification.
+ */
+function notifyStaff({ kind = 'info', title, body = '', url = '/crm/appointments', push = true, ...extra }) {
+  broadcastLive({ type: kind, title, body, url, ...extra })
+  if (push && title) return sendPushToAll(title, body, url)
 }
 
 const app = express()
@@ -135,16 +160,20 @@ function mapAppointment(row) {
     comment: row.comment || undefined,
     status: row.status,
     masterId: row.master_id ? String(row.master_id) : undefined,
-    corporateId: row.corporate_id ? String(row.corporate_id) : undefined,
+    corporateId: (row.corporate_id || row.car_corporate_id) ? String(row.corporate_id || row.car_corporate_id) : undefined,
     clientId: row.client_id ? String(row.client_id) : undefined,
     carId: row.car_id ? String(row.car_id) : undefined,
     total: row.total ? Number(row.total) : undefined,
     cancelReason: row.cancel_reason || undefined,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    source: row.source || undefined,
   }
   if (row.oil_brand || row.oil_filter || row.air_filter || row.cabin_filter || row.service_notes) {
     apt.serviceRecord = {
-      oil: row.oil_brand ? { brand: row.oil_brand, viscosity: row.oil_viscosity || '', liters: Number(row.oil_liters) || 0 } : undefined,
+      oil: row.oil_brand ? {
+        brand: row.oil_brand, viscosity: row.oil_viscosity || '', liters: Number(row.oil_liters) || 0,
+        pricePerLiter: Number(row.oil_price) || 0, cost: Number(row.oil_cost) || 0,
+      } : undefined,
       oilFilter: row.oil_filter || undefined,
       airFilter: row.air_filter || undefined,
       cabinFilter: row.cabin_filter || undefined,
@@ -171,6 +200,8 @@ function mapCar(c) {
     mileage: c.mileage || 0,
     lastService: toDate(c.last_service),
     nextService: toDate(c.next_service),
+    isArchived: Boolean(c.archived_at),
+    archivedAt: c.archived_at ? new Date(c.archived_at).toISOString() : undefined,
   }
 }
 
@@ -180,7 +211,10 @@ function mapHistory(h) {
     date: toDate(h.date),
     mileage: h.mileage,
     services: h.services || [],
-    oil: h.oil_brand ? { brand: h.oil_brand, viscosity: h.oil_viscosity || '', liters: Number(h.oil_liters) || 0 } : undefined,
+    oil: h.oil_brand ? {
+      brand: h.oil_brand, viscosity: h.oil_viscosity || '', liters: Number(h.oil_liters) || 0,
+      pricePerLiter: Number(h.oil_price) || 0, cost: Number(h.oil_cost) || 0,
+    } : undefined,
     filters: {
       oil: h.oil_filter || undefined,
       air: h.air_filter || undefined,
@@ -197,8 +231,8 @@ function mapHistory(h) {
 
 // ─── Client tracking helpers ──────────────────────────────────────────────────
 
-/** Find existing client by normalized phone or create a new one. Returns client id. */
-async function findOrCreateClient(name, phone) {
+/** Find existing client by normalized phone or create a new one. Returns client id. `announce`: tell the staff about a NEW client. */
+async function findOrCreateClient(name, phone, { announce = false } = {}) {
   const phoneNorm = normalizePhone(phone)
   if (!phoneNorm) return null
 
@@ -207,7 +241,12 @@ async function findOrCreateClient(name, phone) {
     'INSERT INTO clients (name, phone, phone_normalized) VALUES ($1,$2,$3) ON CONFLICT (phone_normalized) WHERE phone_normalized IS NOT NULL DO NOTHING RETURNING id',
     [name, phone, phoneNorm]
   )
-  if (ins.rows.length) return ins.rows[0].id
+  if (ins.rows.length) {
+    if (announce) {
+      notifyStaff({ kind: 'client', title: 'Новый клиент', body: `${name} · ${phone}`, url: '/crm/clients', clientId: String(ins.rows[0].id) })
+    }
+    return ins.rows[0].id
+  }
 
   // Row already existed — fetch it
   const { rows } = await pool.query('SELECT id FROM clients WHERE phone_normalized = $1', [phoneNorm])
@@ -365,8 +404,46 @@ app.delete('/api/employees/:id', auth, async (req, res) => {
 // ─── Appointments ─────────────────────────────────────────────────────────────
 app.get('/api/appointments', auth, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM appointments ORDER BY date DESC, time DESC')
+    // car_corporate_id: an order for a fleet car counts as corporate even if it was created without corporate_id
+    const { rows } = await pool.query(`
+      SELECT a.*, c.corporate_id AS car_corporate_id
+      FROM appointments a LEFT JOIN cars c ON c.id = a.car_id
+      ORDER BY a.date DESC, a.time DESC`)
     res.json(rows.map(mapAppointment))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// "New bookings" notification: bookings that came from the public site or the Telegram bot since this employee
+// last opened the Appointments page. Bookings typed into the CRM by staff don't count. The last seen id is stored
+// per employee, so the badge is the same on every device.
+app.get('/api/appointments/new', auth, async (req, res) => {
+  try {
+    if (!isStaffAdmin(req)) return res.json({ count: 0, items: [] })
+    const { rows: [e] } = await pool.query('SELECT appointments_seen_id FROM employees WHERE id = $1', [req.user.id])
+    if (!e) return res.json({ count: 0, items: [] })
+    let seen = e.appointments_seen_id
+    if (seen == null) {   // an employee created after the migration: nothing existing counts as new
+      seen = (await pool.query('SELECT COALESCE(MAX(id), 0) AS m FROM appointments')).rows[0].m
+      await pool.query('UPDATE employees SET appointments_seen_id = $2 WHERE id = $1', [req.user.id, seen])
+    }
+    const { rows } = await pool.query(`
+      SELECT id, source, client_name, car_make, car_model, license_plate, date, time
+      FROM appointments WHERE id > $1 AND source IN ('site','telegram') ORDER BY id DESC LIMIT 200`, [seen])
+    res.json({
+      count: rows.length,
+      items: rows.map(r => ({
+        id: String(r.id), source: r.source, clientName: r.client_name,
+        car: `${r.car_make} ${r.car_model}`.trim(), licensePlate: r.license_plate, date: toDate(r.date), time: toTime(r.time),
+      })),
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/appointments/seen', auth, async (req, res) => {
+  try {
+    await pool.query(
+      'UPDATE employees SET appointments_seen_id = (SELECT COALESCE(MAX(id), 0) FROM appointments) WHERE id = $1', [req.user.id])
+    res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -383,6 +460,7 @@ app.post('/api/appointments', auth, async (req, res) => {
        a.oilPreference, a.comment || null, a.status || 'pending', a.masterId || null, a.corporateId || null]
     )
     const aptId = rows[0].id
+    if (a.corporateId) telegramBot.notifyAppointment(aptId, 'created')
     // Auto-link client and car (fire-and-forget, do not fail the request)
     findOrCreateClient(a.clientName, a.clientPhone).then(async clientId => {
       const carId = clientId ? await findOrCreateCar(clientId, a) : null
@@ -396,11 +474,11 @@ app.post('/api/appointments', auth, async (req, res) => {
     const svcLabel = Array.isArray(a.services) && a.services.length
       ? a.services.slice(0, 2).join(', ') + (a.services.length > 2 ? ` +${a.services.length - 2}` : '')
       : ''
-    sendPushToAll(
-      '📋 Новая запись',
-      `${a.clientName} · ${a.date} ${a.time}${svcLabel ? ' · ' + svcLabel : ''}`,
-      '/crm/appointments'
-    )
+    // typed in by staff: other open tabs reload their lists silently (no toast), browsers get the push as before
+    notifyStaff({
+      kind: 'data', what: 'appointments', title: '📋 Новая запись',
+      body: `${a.clientName} · ${a.date} ${a.time}${svcLabel ? ' · ' + svcLabel : ''}`, url: '/crm/appointments',
+    })
     res.json({ id: String(aptId) })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -419,13 +497,17 @@ app.patch('/api/appointments/:id', auth, async (req, res) => {
     if (d.services !== undefined) add('services', d.services)
     if (d.serviceRecord) {
       const sr = d.serviceRecord
-      if (sr.oil) { add('oil_brand', sr.oil.brand); add('oil_viscosity', sr.oil.viscosity); add('oil_liters', sr.oil.liters) }
+      if (sr.oil) {
+        add('oil_brand', sr.oil.brand); add('oil_viscosity', sr.oil.viscosity); add('oil_liters', sr.oil.liters)
+        add('oil_price', sr.oil.pricePerLiter ?? null); add('oil_cost', sr.oil.cost ?? null)
+      }
       if (sr.oilFilter !== undefined) add('oil_filter', sr.oilFilter)
       if (sr.airFilter !== undefined) add('air_filter', sr.airFilter)
       if (sr.cabinFilter !== undefined) add('cabin_filter', sr.cabinFilter)
       if (sr.notes !== undefined) add('service_notes', sr.notes)
     }
     if (!fields.length) return res.json({ ok: true })
+    const { rows: [prev] } = await pool.query('SELECT status, date, time FROM appointments WHERE id=$1', [req.params.id])
     vals.push(req.params.id)
     await pool.query(`UPDATE appointments SET ${fields.join(',')} WHERE id=$${i}`, vals)
     // Recalc client stats + write service history when appointment is completed
@@ -433,7 +515,7 @@ app.patch('/api/appointments/:id', auth, async (req, res) => {
       let { rows: [apt] } = await pool.query(
         `SELECT client_id, car_id, client_name, client_phone, car_make, car_model, car_year,
                 license_plate, engine_type, engine_volume, mileage, vin, date, services,
-                oil_brand, oil_viscosity, oil_liters, oil_filter, air_filter, cabin_filter,
+                oil_brand, oil_viscosity, oil_liters, oil_price, oil_cost, oil_filter, air_filter, cabin_filter,
                 service_notes, total, master_id
          FROM appointments WHERE id=$1`,
         [req.params.id]
@@ -464,18 +546,23 @@ app.patch('/api/appointments/:id', auth, async (req, res) => {
             : null
           await pool.query(`
             INSERT INTO service_history
-              (car_id, date, mileage, services, oil_brand, oil_viscosity, oil_liters,
+              (car_id, date, mileage, services, oil_brand, oil_viscosity, oil_liters, oil_price, oil_cost,
                oil_filter, air_filter, cabin_filter, master_notes, total, master_name)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
           `, [
             apt.car_id, apt.date, apt.mileage || 0, apt.services || [],
             apt.oil_brand || null, apt.oil_viscosity || null, apt.oil_liters || null,
+            apt.oil_price ?? null, apt.oil_cost ?? null,
             apt.oil_filter || null, apt.air_filter || null, apt.cabin_filter || null,
             apt.service_notes || null, apt.total || 0, masterRow?.name || null,
           ])
         } catch (e) { console.error('service_history insert error:', e) }
       }
     }
+    // Telegram: tell the corporate client what changed (no-op for non-corporate appointments)
+    const event = detectAppointmentEvent(prev, d)
+    if (event) telegramBot.notifyAppointment(req.params.id, event)
+    broadcastLive({ type: 'data', what: 'appointments' })   // other open tabs reload their lists
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -512,7 +599,7 @@ app.get('/api/clients', auth, async (req, res) => {
     const orderMap = { lastVisit: 'last_visit DESC NULLS LAST', totalSpent: 'total_spent DESC', visitCount: 'visit_count DESC', name: 'name' }
     const order = orderMap[sort] || 'created_at DESC'
     const { rows: clients } = await pool.query(`SELECT * FROM clients ${where} ORDER BY ${order}`, vals)
-    const { rows: cars } = await pool.query('SELECT * FROM cars WHERE client_id IS NOT NULL ORDER BY id')
+    const { rows: cars } = await pool.query('SELECT * FROM cars WHERE client_id IS NOT NULL AND archived_at IS NULL ORDER BY id')
     const carIds = cars.map(c => c.id)
     const { rows: history } = carIds.length
       ? await pool.query('SELECT * FROM service_history WHERE car_id = ANY($1) ORDER BY date DESC', [carIds])
@@ -522,6 +609,31 @@ app.get('/api/clients', auth, async (req, res) => {
       ...mapClient(c),
       cars: carsWithHistory.filter(car => car.clientId === String(c.id)),
     })))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// "New clients" badge: clients added since this employee last opened the Clients page.
+// The last seen client id is stored per employee, so the badge is the same on every device.
+app.get('/api/clients/new', auth, async (req, res) => {
+  try {
+    if (!isStaffAdmin(req)) return res.json({ count: 0, ids: [] })
+    const { rows: [e] } = await pool.query('SELECT clients_seen_id FROM employees WHERE id = $1', [req.user.id])
+    if (!e) return res.json({ count: 0, ids: [] })
+    let seen = e.clients_seen_id
+    if (seen == null) {   // an employee created after the migration: nothing existing counts as new
+      seen = (await pool.query('SELECT COALESCE(MAX(id), 0) AS m FROM clients')).rows[0].m
+      await pool.query('UPDATE employees SET clients_seen_id = $2 WHERE id = $1', [req.user.id, seen])
+    }
+    const { rows } = await pool.query('SELECT id FROM clients WHERE id > $1 ORDER BY id DESC LIMIT 200', [seen])
+    res.json({ count: rows.length, ids: rows.map(r => String(r.id)) })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/clients/seen', auth, async (req, res) => {
+  try {
+    await pool.query(
+      'UPDATE employees SET clients_seen_id = (SELECT COALESCE(MAX(id), 0) FROM clients) WHERE id = $1', [req.user.id])
+    res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -536,7 +648,7 @@ app.get('/api/clients/lookup', auth, async (req, res) => {
           'id', ca.id, 'make', ca.make, 'model', ca.model, 'year', ca.year,
           'licensePlate', ca.license_plate, 'engineType', ca.engine_type,
           'engineVolume', ca.engine_volume::float, 'mileage', ca.mileage
-        )) FROM cars ca WHERE ca.client_id = c.id) AS cars
+        )) FROM cars ca WHERE ca.client_id = c.id AND ca.archived_at IS NULL) AS cars
       FROM clients c
       WHERE c.name ILIKE $1 OR c.phone ILIKE $1 OR COALESCE(c.phone_normalized,'') ILIKE $1
       ORDER BY c.last_visit DESC NULLS LAST LIMIT 10
@@ -556,7 +668,7 @@ app.get('/api/clients/:id', auth, async (req, res) => {
     await recalcClientStats(clientId).catch(console.error)
     const { rows: [c] } = await pool.query('SELECT * FROM clients WHERE id=$1', [clientId])
     if (!c) return res.status(404).json({ error: 'Клиент не найден' })
-    const { rows: cars } = await pool.query('SELECT * FROM cars WHERE client_id=$1 ORDER BY id', [c.id])
+    const { rows: cars } = await pool.query('SELECT * FROM cars WHERE client_id=$1 AND archived_at IS NULL ORDER BY id', [c.id])
     const { rows: history } = cars.length
       ? await pool.query('SELECT * FROM service_history WHERE car_id = ANY($1) ORDER BY date DESC', [cars.map(x => x.id)])
       : { rows: [] }
@@ -621,6 +733,7 @@ app.post('/api/clients/:id/merge', auth, async (req, res) => {
 app.get('/api/corporate', auth, async (req, res) => {
   try {
     const { rows: corps } = await pool.query('SELECT * FROM corporate_clients ORDER BY id')
+    // archived cars are kept apart: they don't count as the fleet, but their history still counts in totals and reports
     const { rows: cars } = await pool.query('SELECT * FROM cars WHERE corporate_id IS NOT NULL ORDER BY id')
     const carIds = cars.map(c => c.id)
     const { rows: history } = carIds.length
@@ -638,7 +751,8 @@ app.get('/api/corporate', auth, async (req, res) => {
       email: c.email || undefined,
       contract: c.contract || undefined,
       comment: c.comment || undefined,
-      cars: carsWithHistory.filter(car => car.corporateId === String(c.id)),
+      cars: carsWithHistory.filter(car => car.corporateId === String(c.id) && !car.isArchived),
+      archivedCars: carsWithHistory.filter(car => car.corporateId === String(c.id) && car.isArchived),
     })))
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -672,16 +786,121 @@ app.delete('/api/corporate/:id', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ─── Corporate: Telegram access ───────────────────────────────────────────────
+const isStaffAdmin = (req) => ['owner', 'admin'].includes(req.user?.role)
+
+// Generates a one-time connect code (valid 72h) for a corporate client
+app.post('/api/corporate/:id/connect-code', auth, async (req, res) => {
+  try {
+    if (!isStaffAdmin(req)) return res.status(403).json({ error: 'Недостаточно прав' })
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = `G56-${crypto.randomInt(100000, 1000000)}`
+      try {
+        const { rows } = await pool.query(
+          `UPDATE corporate_clients
+              SET connect_code = $1, connect_code_expires_at = NOW() + INTERVAL '72 hours'
+            WHERE id = $2 RETURNING connect_code, connect_code_expires_at`,
+          [code, req.params.id]
+        )
+        if (!rows.length) return res.status(404).json({ error: 'Компания не найдена' })
+        const username = telegramBot.getBotUsername()
+        return res.json({
+          code: rows[0].connect_code,
+          expiresAt: rows[0].connect_code_expires_at,
+          link: username ? `https://t.me/${username}?start=${rows[0].connect_code}` : null,
+        })
+      } catch (e) {
+        if (e.code !== '23505') throw e // unique violation → try another code
+      }
+    }
+    res.status(500).json({ error: 'Не удалось сгенерировать код' })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/corporate/:id/telegram', auth, async (req, res) => {
+  try {
+    const { rows: users } = await pool.query(
+      `SELECT id, name, username, is_active, created_at FROM telegram_users
+        WHERE corporate_id = $1 ORDER BY created_at`, [req.params.id])
+    const { rows: [corp] } = await pool.query(
+      `SELECT connect_code, connect_code_expires_at FROM corporate_clients WHERE id = $1`, [req.params.id])
+    const username = telegramBot.getBotUsername()
+    const codeActive = corp?.connect_code && new Date(corp.connect_code_expires_at) > new Date()
+    res.json({
+      botUsername: username || null,
+      code: codeActive ? corp.connect_code : null,
+      codeExpiresAt: codeActive ? corp.connect_code_expires_at : null,
+      link: codeActive && username ? `https://t.me/${username}?start=${corp.connect_code}` : null,
+      users: users.map(u => ({
+        id: String(u.id), name: u.name || '', username: u.username || '',
+        isActive: u.is_active, createdAt: u.created_at,
+      })),
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Revokes a Telegram user's access to the organisation
+app.delete('/api/telegram-users/:id', auth, async (req, res) => {
+  try {
+    if (!isStaffAdmin(req)) return res.status(403).json({ error: 'Недостаточно прав' })
+    await pool.query('DELETE FROM telegram_users WHERE id = $1', [req.params.id])
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ─── Cars ─────────────────────────────────────────────────────────────────────
+// The live stream for the CRM (staff only). The token travels in the Authorization header (fetch streaming),
+// not in the URL. A comment line every 25 s keeps proxies from closing an idle connection.
+app.get('/api/live', auth, (req, res) => {
+  if (!isStaffAdmin(req)) return res.status(403).json({ error: 'Недостаточно прав' })
+  res.set({
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',   // nginx: don't buffer the stream
+  })
+  res.flushHeaders()
+  res.write('retry: 3000\n\n')
+  res.write(`data: ${JSON.stringify({ type: 'hello', ts: Date.now() })}\n\n`)
+  const stream = { res }
+  liveStreams.add(stream)
+  const beat = setInterval(() => { try { res.write(': ping\n\n') } catch { /* closed */ } }, 25_000)
+  req.on('close', () => { clearInterval(beat); liveStreams.delete(stream) })
+})
+
+// A plate is unique for ever: an archived car keeps it reserved, so the same plate can't be added again —
+// the archived car is restored instead (with its whole history).
+async function findPlateConflict(plate, exceptId) {
+  const norm = normalizePlate(plate)
+  if (!norm) return null
+  const { rows: [r] } = await pool.query(
+    'SELECT id, make, model, archived_at FROM cars WHERE plate_normalized = $1 AND ($2::int IS NULL OR id <> $2)',
+    [norm, exceptId ?? null])
+  return r || null
+}
+const plateConflictBody = (r) => r.archived_at
+  ? { code: 'CAR_ARCHIVED', carId: String(r.id), label: `${r.make} ${r.model}`,
+      error: 'Автомобиль с таким госномером уже был в базе и находится в архиве. История обслуживания сохранена — восстановите его вместо добавления нового.' }
+  : { code: 'CAR_EXISTS', carId: String(r.id), label: `${r.make} ${r.model}`, error: 'Автомобиль с таким госномером уже есть в базе' }
+
+// GET /api/cars                → active cars (what the fleet lists show)
+// GET /api/cars?archived=1     → the archive (deleted cars: nothing is ever physically removed)
 app.get('/api/cars', auth, async (req, res) => {
   try {
-    const { rows: cars } = await pool.query('SELECT * FROM cars ORDER BY id')
+    const archived = req.query.archived === '1'
+    const { rows: cars } = await pool.query(`
+      SELECT c.*, COALESCE(co.company_name, cl.name) AS owner_name
+      FROM cars c
+      LEFT JOIN corporate_clients co ON co.id = c.corporate_id
+      LEFT JOIN clients cl ON cl.id = c.client_id
+      WHERE c.archived_at IS ${archived ? 'NOT NULL' : 'NULL'} ORDER BY c.id`)
     const carIds = cars.map(c => c.id)
     const { rows: history } = carIds.length
       ? await pool.query('SELECT * FROM service_history WHERE car_id = ANY($1) ORDER BY date DESC', [carIds])
       : { rows: [] }
     res.json(cars.map(c => ({
       ...mapCar(c),
+      ownerName: c.owner_name || '',
       serviceHistory: history.filter(h => h.car_id === c.id).map(mapHistory),
     })))
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -690,9 +909,11 @@ app.get('/api/cars', auth, async (req, res) => {
 app.post('/api/cars', auth, async (req, res) => {
   try {
     const { clientId, corporateId, make, model, generation, year, engineType, engineVolume, licensePlate, vin, mileage } = req.body
+    const conflict = await findPlateConflict(licensePlate)
+    if (conflict) return res.status(409).json(plateConflictBody(conflict))
     const { rows } = await pool.query(
-      'INSERT INTO cars (client_id,corporate_id,make,model,generation,year,engine_type,engine_volume,license_plate,vin,mileage) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id',
-      [clientId || null, corporateId || null, make, model, generation || null, year, engineType, engineVolume, licensePlate, vin || null, mileage || 0]
+      'INSERT INTO cars (client_id,corporate_id,make,model,generation,year,engine_type,engine_volume,license_plate,plate_normalized,vin,mileage) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id',
+      [clientId || null, corporateId || null, make, model, generation || null, year, engineType, engineVolume, licensePlate, normalizePlate(licensePlate), vin || null, mileage || 0]
     )
     res.json({ id: String(rows[0].id) })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -701,17 +922,120 @@ app.post('/api/cars', auth, async (req, res) => {
 app.patch('/api/cars/:id', auth, async (req, res) => {
   try {
     const { make, model, generation, year, engineType, engineVolume, licensePlate, vin, mileage, lastService, nextService } = req.body
+    const conflict = await findPlateConflict(licensePlate, Number(req.params.id))
+    if (conflict) return res.status(409).json(plateConflictBody(conflict))
     await pool.query(
-      'UPDATE cars SET make=$1,model=$2,generation=$3,year=$4,engine_type=$5,engine_volume=$6,license_plate=$7,vin=$8,mileage=$9,last_service=$10,next_service=$11 WHERE id=$12',
-      [make, model, generation || null, year, engineType, engineVolume, licensePlate, vin || null, mileage, lastService || null, nextService || null, req.params.id]
+      'UPDATE cars SET make=$1,model=$2,generation=$3,year=$4,engine_type=$5,engine_volume=$6,license_plate=$7,plate_normalized=$8,vin=$9,mileage=$10,last_service=$11,next_service=$12 WHERE id=$13',
+      [make, model, generation || null, year, engineType, engineVolume, licensePlate, normalizePlate(licensePlate), vin || null, mileage, lastService || null, nextService || null, req.params.id]
     )
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// "Delete" = move to the archive. Only Garage 56 staff (owner/admin) can do it; a corporate client asks for it
+// instead (Telegram bot → car_delete_requests) and an administrator decides. Nothing is removed from the database:
+// the car, its service history and all its orders stay, so spending totals and reports never shrink.
 app.delete('/api/cars/:id', auth, async (req, res) => {
   try {
-    await pool.query('DELETE FROM cars WHERE id=$1', [req.params.id])
+    if (!isStaffAdmin(req)) return res.status(403).json({ error: 'Удалять автомобили может только администратор Garage 56' })
+    const { rowCount } = await pool.query(
+      'UPDATE cars SET archived_at = NOW(), archived_by = $2 WHERE id = $1 AND archived_at IS NULL', [req.params.id, req.user.id])
+    if (!rowCount) return res.status(404).json({ error: 'Автомобиль не найден или уже в архиве' })
+    // an open request for this car is closed as approved
+    const { rows: closed } = await pool.query(
+      `UPDATE car_delete_requests
+          SET status='approved', resolved_at=NOW(), resolved_by=$2, admin_comment='Удалено администратором'
+        WHERE car_id=$1 AND status='pending' AND kind='delete' RETURNING id`, [req.params.id, req.user.id])
+    closed.forEach(r => telegramBot.notifyCarDeletion(r.id))
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Bring a car back from the archive (with all its history)
+app.post('/api/cars/:id/restore', auth, async (req, res) => {
+  try {
+    if (!isStaffAdmin(req)) return res.status(403).json({ error: 'Недостаточно прав' })
+    const { rowCount } = await pool.query(
+      'UPDATE cars SET archived_at = NULL, archived_by = NULL WHERE id = $1 AND archived_at IS NOT NULL', [req.params.id])
+    if (!rowCount) return res.status(404).json({ error: 'Автомобиль не найден в архиве' })
+    // an open "please restore" request for this car is answered by the restore itself
+    const { rows: closed } = await pool.query(
+      `UPDATE car_delete_requests
+          SET status='approved', resolved_at=NOW(), resolved_by=$2, admin_comment='Восстановлено администратором'
+        WHERE car_id=$1 AND status='pending' AND kind='restore' RETURNING id`, [req.params.id, req.user.id])
+    closed.forEach(r => telegramBot.notifyCarDeletion(r.id))
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── Car requests from corporate clients: delete a car / restore an archived car ─────────────
+// The client can only ask (Telegram bot); an administrator decides here. Table: car_delete_requests, kind = delete | restore.
+const mapDeleteRequest = (r) => ({
+  id: String(r.id),
+  kind: r.kind || 'delete',
+  corporateId: String(r.corporate_id),
+  companyName: r.company_name,
+  carId: r.car_id ? String(r.car_id) : null,
+  carLabel: r.car_label,
+  licensePlate: r.license_plate,
+  reason: r.reason || '',
+  requestedBy: r.requested_by || '',
+  status: r.status,
+  adminComment: r.admin_comment || '',
+  createdAt: r.created_at,
+  resolvedAt: r.resolved_at,
+})
+
+// ?status=pending (default) | all
+app.get('/api/car-delete-requests', auth, async (req, res) => {
+  try {
+    if (!isStaffAdmin(req)) return res.status(403).json({ error: 'Недостаточно прав' })
+    const onlyPending = req.query.status !== 'all'
+    const { rows } = await pool.query(`
+      SELECT r.*, c.company_name FROM car_delete_requests r
+      JOIN corporate_clients c ON c.id = r.corporate_id
+      ${onlyPending ? `WHERE r.status = 'pending'` : ''}
+      ORDER BY (r.status = 'pending') DESC, r.created_at DESC LIMIT 200`)
+    res.json(rows.map(mapDeleteRequest))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Approve: kind=delete → archive the car (gone from lists; history and orders stay for reports);
+//          kind=restore → bring the archived car back with its whole history.
+app.post('/api/car-delete-requests/:id/approve', auth, async (req, res) => {
+  const client = await pool.connect()
+  try {
+    if (!isStaffAdmin(req)) return res.status(403).json({ error: 'Недостаточно прав' })
+    await client.query('BEGIN')
+    const { rows: [r] } = await client.query(
+      `SELECT * FROM car_delete_requests WHERE id=$1 AND status='pending' FOR UPDATE`, [req.params.id])
+    if (!r) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Запрос уже обработан или не найден' }) }
+    await client.query(
+      `UPDATE car_delete_requests SET status='approved', resolved_at=NOW(), resolved_by=$2 WHERE id=$1`, [r.id, req.user.id])
+    if (r.car_id) {
+      if (r.kind === 'restore') await client.query('UPDATE cars SET archived_at = NULL, archived_by = NULL WHERE id = $1', [r.car_id])
+      else await client.query('UPDATE cars SET archived_at = NOW(), archived_by = $2 WHERE id = $1 AND archived_at IS NULL', [r.car_id, req.user.id])
+    }
+    await client.query('COMMIT')
+    telegramBot.notifyCarDeletion(r.id)
+    broadcastLive({ type: 'data', what: 'car_requests' })
+    res.json({ ok: true })
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {})
+    res.status(500).json({ error: e.message })
+  } finally { client.release() }
+})
+
+app.post('/api/car-delete-requests/:id/reject', auth, async (req, res) => {
+  try {
+    if (!isStaffAdmin(req)) return res.status(403).json({ error: 'Недостаточно прав' })
+    const comment = telegramBotData.dbSafe(String(req.body?.comment || '')).trim().slice(0, 300)
+    const { rowCount } = await pool.query(
+      `UPDATE car_delete_requests SET status='rejected', admin_comment=$2, resolved_at=NOW(), resolved_by=$3
+        WHERE id=$1 AND status='pending'`, [req.params.id, comment || null, req.user.id])
+    if (!rowCount) return res.status(409).json({ error: 'Запрос уже обработан или не найден' })
+    telegramBot.notifyCarDeletion(Number(req.params.id))
+    broadcastLive({ type: 'data', what: 'car_requests' })
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1086,8 +1410,8 @@ app.post('/api/book', bookLimiter, async (req, res) => {
     const { rows: bookRows } = await pool.query(
       `INSERT INTO appointments
          (date,time,client_name,client_phone,car_make,car_model,car_year,license_plate,
-          engine_type,engine_volume,mileage,vin,services,oil_preference,comment,status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,
+          engine_type,engine_volume,mileage,vin,services,oil_preference,comment,status,source)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'site') RETURNING id`,
       [bookDate, bookTime, clientName, clientPhone,
        carMake || '', carModel || '', carYear || 2024, (licensePlate || '').toUpperCase(),
        engineType || 'Бензин', engineVolume || 0, mileage || 0, vin || null,
@@ -1095,18 +1419,19 @@ app.post('/api/book', bookLimiter, async (req, res) => {
     )
     const bookAptId = bookRows[0].id
     const bookApt = { clientName, clientPhone, carMake, carModel, carYear, licensePlate, engineType, engineVolume, mileage, vin }
-    findOrCreateClient(clientName, clientPhone).then(async clientId => {
+    findOrCreateClient(clientName, clientPhone, { announce: true }).then(async clientId => {
       const carId = clientId ? await findOrCreateCar(clientId, bookApt) : null
       if (clientId || carId) {
         await pool.query('UPDATE appointments SET client_id=$1, car_id=$2 WHERE id=$3', [clientId, carId, bookAptId])
       }
     }).catch(console.error)
     const svcLabel = bookServices.length ? bookServices.slice(0, 2).join(', ') + (bookServices.length > 2 ? ` +${bookServices.length - 2}` : '') : ''
-    sendPushToAll(
-      '📋 Новая запись',
-      `${clientName} · ${bookDate} ${bookTime}${svcLabel ? ' · ' + svcLabel : ''}`,
-      '/crm/appointments'
-    )
+    notifyStaff({
+      kind: 'booking', source: 'site', bookingId: String(bookAptId),
+      title: 'Новая запись с сайта',
+      body: `${clientName} · ${[carMake, carModel].filter(Boolean).join(' ')} · ${bookDate.split('-').reverse().slice(0, 2).join('.')} в ${bookTime}${svcLabel ? ' · ' + svcLabel : ''}`,
+      url: '/crm/appointments',
+    })
     res.json({ ok: true })
   } catch (e) {
     console.error(e)
@@ -1297,6 +1622,17 @@ app.get('/api/analytics', auth, async (req, res) => {
 })
 
 app.listen(PORT, async () => {
+  for (const file of ['005_oil_cost.sql', '006_car_delete_requests.sql', '007_car_archive.sql', '008_request_kind_new_clients.sql', '009_appointment_source.sql']) {
+    await pool.query(fs.readFileSync(path.join(__dirname, '../database/migrations', file), 'utf8'))
+      .catch(e => console.error(`${file} migration:`, e.message))
+  }
+  // Cars added from the CRM used to have no normalized plate, so the "plate is taken" check could not see them
+  try {
+    const { rows } = await pool.query('SELECT id, license_plate FROM cars WHERE plate_normalized IS NULL')
+    for (const r of rows) {
+      await pool.query('UPDATE cars SET plate_normalized=$1 WHERE id=$2', [normalizePlate(r.license_plate), r.id]).catch(() => {})
+    }
+  } catch (e) { console.error('plate_normalized backfill:', e.message) }
   await pool.query('ALTER TABLE cars ADD COLUMN IF NOT EXISTS generation TEXT').catch(() => {})
   // Ensure client tracking columns and indexes exist (idempotent)
   await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone_normalized VARCHAR(20)`).catch(() => {})
@@ -1320,4 +1656,5 @@ app.listen(PORT, async () => {
     )
   `).catch(e => console.error('car_models init:', e.message))
   console.log(`✅ API: http://localhost:${PORT}`)
+  telegramBot.startBot({ sendPush: notifyStaff }).catch(e => console.error('Telegram bot failed to start:', e.message))
 })

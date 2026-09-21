@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import { useAuth } from '../../context/AuthContext'
 import type { Appointment } from '../../types'
+import { appointmentRowClass } from '../../utils/appointmentStyle'
+import { OrderTag } from '../../components/OrderTags'
+import { calcOrderTotal, formatMoney } from '../../utils/pricing'
 import { BrandLogo } from '../../components/CarFormModal'
 import { api } from '../../api'
 
@@ -51,7 +54,8 @@ function CompleteModal({ apt, onClose, onSave }: {
   }, [])
 
   const selectedOil = oils.find(i => i.id === oilItemId)
-  const total = Object.values(servicePrices).reduce((sum, p) => sum + (Number(p) || 0), 0)
+  // final price = services + oil (liters × price per liter from the warehouse)
+  const { servicesTotal, pricePerLiter, oilCost, total } = calcOrderTotal(servicePrices, selectedOil, Number(liters) || 0)
 
   const getValidationError = (): string | null => {
     if (!oilItemId) return 'Выберите масло со склада'
@@ -82,7 +86,7 @@ function CompleteModal({ apt, onClose, onSave }: {
         status: 'completed',
         total,
         serviceRecord: {
-          oil: { brand: oilItem.brand ?? oilItem.name, viscosity: oilItem.name, liters: litersNum },
+          oil: { brand: oilItem.brand ?? oilItem.name, viscosity: oilItem.name, liters: litersNum, pricePerLiter, cost: oilCost },
           oilFilter: oilFilterItem?.name,
           airFilter: airFilterItem?.name,
           cabinFilter: cabinFilterItem?.name,
@@ -135,6 +139,10 @@ function CompleteModal({ apt, onClose, onSave }: {
                   <span className={selectedOil.quantity <= 0 ? 'text-red-400' : selectedOil.quantity <= selectedOil.minQuantity ? 'text-yellow-400' : 'text-gray-400'}>
                     {selectedOil.quantity} {selectedOil.unit}
                   </span>
+                  <span className="text-gray-500"> · Цена: </span>
+                  {selectedOil.price > 0
+                    ? <span className="text-gray-300">{formatMoney(selectedOil.price)}/л</span>
+                    : <span className="text-orange-400">не указана на складе</span>}
                 </div>
               )}
             </div>
@@ -213,12 +221,28 @@ function CompleteModal({ apt, onClose, onSave }: {
                   )
                 })}
               </div>
-              <div className="flex justify-between items-center mt-3 pt-3 border-t border-[#2a2a2a]">
-                <span className="text-gray-400 text-sm font-medium">Итого</span>
-                <span className="text-white font-bold text-base">{total.toLocaleString('ru-RU')} ₸</span>
-              </div>
             </div>
           )}
+
+          <div className="pt-3 border-t border-[#2a2a2a] space-y-1.5 text-sm">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-500">Услуги</span>
+              <span className="text-gray-300">{formatMoney(servicesTotal)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-500">
+                Масло{selectedOil && Number(liters) > 0 ? ` (${Number(liters)} л × ${formatMoney(pricePerLiter)})` : ''}
+              </span>
+              <span className="text-gray-300">{formatMoney(oilCost)}</span>
+            </div>
+            {selectedOil && !(pricePerLiter > 0) && (
+              <div className="text-xs text-orange-400">У масла не указана цена за литр — заполните её на складе, иначе оно не попадёт в стоимость.</div>
+            )}
+            <div className="flex justify-between items-center pt-1.5 border-t border-[#2a2a2a]">
+              <span className="text-gray-400 font-medium">Итого</span>
+              <span className="text-white font-bold text-base">{formatMoney(total)}</span>
+            </div>
+          </div>
         </div>
 
         {(validationError || error) && (
@@ -388,6 +412,7 @@ export default function MasterPage() {
                 </div>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-1.5">
                   <span className="text-white text-sm font-medium">{apt.clientName}</span>
+                  <OrderTag apt={apt} />
                   <span className="text-gray-500 text-xs">{apt.clientPhone}</span>
                 </div>
                 {apt.carMake ? (
@@ -473,14 +498,14 @@ export default function MasterPage() {
             </thead>
             <tbody>
               {filtered.map(apt => (
-                <tr key={apt.id} className="border-b border-[#1a1a1a] hover:bg-orange-500/10 hover:border-orange-500/20 transition-colors cursor-pointer"
+                <tr key={apt.id} className={`border-b border-[#1a1a1a] ${appointmentRowClass(apt)} transition-colors cursor-pointer`}
                   onClick={() => setSelected(apt)}>
                   <td className="px-4 py-3">
                     <div className="text-white font-medium">{apt.date.split('-').reverse().join('.')}</div>
                     <div className="text-gray-500 text-xs">{apt.time || '—'}</div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="text-white">{apt.clientName}</div>
+                    <div className="text-white flex items-center gap-2">{apt.clientName}<OrderTag apt={apt} /></div>
                     <div className="text-gray-500 text-xs whitespace-nowrap">{apt.clientPhone}</div>
                   </td>
                   <td className="px-4 py-3">
@@ -634,6 +659,12 @@ export default function MasterPage() {
                           <div><span className="text-gray-500">Бренд: </span><span className="text-gray-200">{selected.serviceRecord.oil.brand}</span></div>
                           <div><span className="text-gray-500">Вязкость: </span><span className="text-gray-200">{selected.serviceRecord.oil.viscosity}</span></div>
                           <div><span className="text-gray-500">Объём: </span><span className="text-gray-200">{selected.serviceRecord.oil.liters} л</span></div>
+                          {!!selected.serviceRecord.oil.cost && (
+                            <div className="col-span-3 flex justify-between border-t border-[#2a2a2a] pt-2 mt-1">
+                              <span className="text-gray-500">{selected.serviceRecord.oil.liters} л × {formatMoney(selected.serviceRecord.oil.pricePerLiter ?? 0)}/л</span>
+                              <span className="text-white font-medium">{formatMoney(selected.serviceRecord.oil.cost)}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

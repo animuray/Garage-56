@@ -8,6 +8,8 @@ import { BrandLogo } from '../../components/CarFormModal'
 import { api } from '../../api'
 import DatePicker from '../../components/DatePicker'
 import type { Appointment } from '../../types'
+import { appointmentRowClass } from '../../utils/appointmentStyle'
+import { OrderTag } from '../../components/OrderTags'
 
 // Compute current UTC+5 date on demand so it stays correct after midnight
 const getToday = () => new Date(Date.now() + 5 * 3600 * 1000).toISOString().split('T')[0]
@@ -225,6 +227,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex items-baseline gap-2 mb-1">
                   <span className="text-white text-sm font-medium">{apt.clientName}</span>
+                  <OrderTag apt={apt} />
                   {master && <span className="text-gray-500 text-xs">· {master.name}</span>}
                 </div>
                 {(apt.carMake || apt.licensePlate) && (
@@ -257,13 +260,13 @@ export default function DashboardPage() {
               {rangeApts.map(apt => {
                 const master = employees.find(e => e.id === apt.masterId)
                 return (
-                  <tr key={apt.id} onClick={() => setSelectedApt(apt)} className="border-b border-[#1a1a1a] hover:bg-orange-500/10 hover:border-orange-500/20 transition-colors cursor-pointer">
+                  <tr key={apt.id} onClick={() => setSelectedApt(apt)} className={`border-b border-[#1a1a1a] ${appointmentRowClass(apt)} transition-colors cursor-pointer`}>
                     <td className="px-4 py-3">
                       <div className="text-white font-medium">{apt.time}</div>
                       <div className="text-gray-500 text-xs">{apt.date.split('-').reverse().join('.')}</div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-white text-sm">{apt.clientName}</div>
+                      <div className="text-white text-sm flex items-center gap-2">{apt.clientName}<OrderTag apt={apt} /></div>
                       <div className="text-gray-500 text-xs">{apt.clientPhone}</div>
                     </td>
                     <td className="px-4 py-3">

@@ -37,10 +37,19 @@ export interface Appointment {
   total?: number;
   cancelReason?: string;
   createdAt: string;
+  source?: 'site' | 'telegram';   // where the booking came from (unset = created in the CRM)
+}
+
+export interface OilUsage {
+  brand: string;
+  viscosity: string;
+  liters: number;
+  pricePerLiter?: number;  // price per liter taken from the warehouse at completion
+  cost?: number;           // liters × pricePerLiter
 }
 
 export interface CompletedServiceRecord {
-  oil?: { brand: string; viscosity: string; liters: number };
+  oil?: OilUsage;
   oilFilter?: string;
   airFilter?: string;
   cabinFilter?: string;
@@ -85,6 +94,9 @@ export interface Car {
   serviceHistory: ServiceHistoryEntry[];
   lastService?: string;
   nextService?: string;
+  isArchived?: boolean;   // "deleted" cars are archived: hidden from lists, history and orders are kept
+  archivedAt?: string;
+  ownerName?: string;     // set on archive listings
 }
 
 export interface ServiceHistoryEntry {
@@ -92,7 +104,7 @@ export interface ServiceHistoryEntry {
   date: string;
   mileage: number;
   services: string[];
-  oil?: { brand: string; viscosity: string; liters: number };
+  oil?: OilUsage;
   filters: { oil?: string; air?: string; cabin?: string; fuel?: string };
   antifreeze?: string;
   freon?: string;
@@ -110,6 +122,7 @@ export interface CorporateClient {
   contract?: string;
   comment?: string;
   cars: Car[];
+  archivedCars?: Car[];   // archived cars still count in the company's history, totals and reports
 }
 
 export interface WarehouseItem {
@@ -121,6 +134,23 @@ export interface WarehouseItem {
   minQuantity: number;
   price: number;
   brand?: string;
+}
+
+// A corporate client asks (via the Telegram bot) to remove a car; only staff can approve
+export interface CarDeleteRequest {
+  id: string;
+  kind: 'delete' | 'restore';   // delete a car from the fleet / restore an archived car
+  corporateId: string;
+  companyName: string;
+  carId: string | null;       // null once the car has been deleted
+  carLabel: string;
+  licensePlate: string;
+  reason: string;
+  requestedBy: string;
+  status: 'pending' | 'approved' | 'rejected';
+  adminComment: string;
+  createdAt: string;
+  resolvedAt: string | null;
 }
 
 export interface Master {

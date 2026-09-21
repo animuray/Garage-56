@@ -4,6 +4,7 @@ import type {
   AppointmentStatus, Employee, Car as CarType,
 } from '../types'
 import { api } from '../api'
+import { onLive } from '../utils/liveEvents'
 
 interface AppContextType {
   appointments: Appointment[]
@@ -92,9 +93,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const onVisible = () => { if (document.visibilityState === 'visible') refreshApts() }
     const interval = setInterval(refreshApts, 30000)
     document.addEventListener('visibilitychange', onVisible)
+    // Live events relayed by the CRM layout: reload exactly what changed, at once
+    const offLive = onLive((e) => {
+      if (e.type === 'booking' || e.type === 'booking_cancelled' || (e.type === 'data' && e.what === 'appointments')) refreshApts()
+      if (e.type === 'client') api.getClients().then(c => setClients(c as Client[])).catch(() => {})
+      if (e.type === 'car_request' || (e.type === 'data' && e.what === 'car_requests')) {
+        api.getCorporate().then(c => setCorporateClients(c as CorporateClient[])).catch(() => {})
+        api.getClients().then(c => setClients(c as Client[])).catch(() => {})
+      }
+    })
     return () => {
       clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisible)
+      offLive()
     }
   }, [])
 
