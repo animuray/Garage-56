@@ -16,18 +16,28 @@ const fmtLiters = (n) => Number((Number(n) || 0).toFixed(1)).toString().replace(
 const has = (s) => Boolean(s && String(s).trim())
 const hasService = (row, re) => (row.services || []).some(s => re.test(s))
 
+// The master now picks materials freely from the warehouse instead of a fixed oil/filter template,
+// so a completed order carries `used_items` (any category, any count) rather than 3 fixed filter
+// slots. Older orders (completed before this existed) only have the old oil_filter/air_filter/
+// cabin_filter columns — count those as "1 filter" each so old reports still add up.
+const usedItemsOf = (r) => Array.isArray(r.used_items) ? r.used_items : []
+const filterCountOf = (r) => {
+  const items = usedItemsOf(r)
+  if (items.length) return items.filter(it => it.category === 'filter').length
+  return [r.oil_filter, r.air_filter, r.cabin_filter].filter(has).length
+}
+const otherMaterialsCountOf = (r) => usedItemsOf(r).filter(it => it.category && it.category !== 'oil' && it.category !== 'filter').length
+
 /** Turns DB rows into printable report lines + totals. */
 function buildReport(rows, { from, to, company }) {
   const lines = rows.map((r, i) => {
     // Client-facing reports name the KIND of material only (oil / filters), never brands or part numbers
-    const filters = [
-      has(r.oil_filter) && 'масляный',
-      has(r.air_filter) && 'воздушный',
-      has(r.cabin_filter) && 'салонный',
-    ].filter(Boolean)
+    const filterCount = filterCountOf(r)
+    const otherCount = otherMaterialsCountOf(r)
     const materials = [
       (has(r.oil_brand) || Number(r.oil_liters) > 0) && 'Масло',
-      filters.length && `Фильтры: ${filters.join(', ')}`,
+      filterCount > 0 && `Фильтры (${filterCount})`,
+      otherCount > 0 && 'Другие материалы',
     ].filter(Boolean)
     return {
       n: i + 1,
@@ -52,9 +62,8 @@ function buildReport(rows, { from, to, company }) {
     orders: rows.length,
     cars: cars.size,
     oilChanges: rows.filter(r => has(r.oil_brand) || hasService(r, /масл/i)).length,
-    airFilters: rows.filter(r => has(r.air_filter) || hasService(r, /воздуш/i)).length,
-    cabinFilters: rows.filter(r => has(r.cabin_filter) || hasService(r, /салон/i)).length,
-    oilFilters: rows.filter(r => has(r.oil_filter)).length,
+    filtersChanged: rows.reduce((s, r) => s + filterCountOf(r), 0),
+    otherMaterials: rows.reduce((s, r) => s + otherMaterialsCountOf(r), 0),
     oilLiters: rows.reduce((s, r) => s + (Number(r.oil_liters) || 0), 0),
     total: rows.reduce((s, r) => s + (Number(r.total) || 0), 0),
     oilCost: rows.reduce((s, r) => s + (Number(r.oil_cost) || 0), 0),
@@ -99,7 +108,8 @@ function summaryText(rep, esc) {
     `📦 Выполнено заказов: <b>${t.orders}</b>`,
     '',
     `🛢 Замен масла: <b>${t.oilChanges}</b> · расход <b>${fmtLiters(t.oilLiters)} л</b>`,
-    `🔩 Фильтры: масляные <b>${t.oilFilters}</b> · воздушные <b>${t.airFilters}</b> · салонные <b>${t.cabinFilters}</b>`,
+    `🔩 Заменено фильтров: <b>${t.filtersChanged}</b>`,
+    ...(t.otherMaterials > 0 ? [`🧴 Другие материалы: <b>${t.otherMaterials}</b>`] : []),
     LINE,
     ...(t.oilCost > 0 ? [`🔧 Работы: <b>${fmtInt(t.worksCost)} ₸</b>`, `🛢 Масло: <b>${fmtInt(t.oilCost)} ₸</b>`] : []),
     `💰 <b>Итого: ${fmtInt(t.total)} ₸</b>`,
@@ -170,9 +180,8 @@ async function buildExcel(rep) {
     ['Обслужено автомобилей', t.cars],
     ['Выполнено заказов', t.orders],
     ['Замена масла', t.oilChanges],
-    ['Масляные фильтры', t.oilFilters],
-    ['Воздушные фильтры', t.airFilters],
-    ['Салонные фильтры', t.cabinFilters],
+    ['Заменено фильтров', t.filtersChanged],
+    ['Другие материалы', t.otherMaterials],
     ['Расход масла, л', Number(t.oilLiters.toFixed(1))],
     ['Стоимость работ, ₸', t.worksCost],
     ['Стоимость масла, ₸', t.oilCost],
@@ -289,7 +298,7 @@ function buildPdf(rep) {
     // ─ Totals ─
     const t = rep.totals
     const tw = cols.reduce((s, c) => s + c.w, 0)
-    const blockH = 14 * 11 + 20
+    const blockH = 14 * 11 + 20   // a little more than the summary block actually needs — safe margin
     if (y + blockH > bottom()) { doc.addPage(); y = doc.page.margins.top }
     doc.moveTo(left, y + 4).lineTo(left + tw, y + 4).lineWidth(1).stroke('#000000')
     y += 12
@@ -299,9 +308,8 @@ function buildPdf(rep) {
       ['Обслужено автомобилей', t.cars],
       ['Выполнено заказов', t.orders],
       ['Замена масла', t.oilChanges],
-      ['Масляные фильтры', t.oilFilters],
-      ['Воздушные фильтры', t.airFilters],
-      ['Салонные фильтры', t.cabinFilters],
+      ['Заменено фильтров', t.filtersChanged],
+      ['Другие материалы', t.otherMaterials],
       ['Расход масла, л', fmtLiters(t.oilLiters)],
       ['Стоимость работ, ₸', fmtInt(t.worksCost)],
       ['Стоимость масла, ₸', fmtInt(t.oilCost)],

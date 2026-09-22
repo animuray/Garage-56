@@ -92,14 +92,10 @@ export function BrandPickerModal({ onSelect, onClose, zIndex = 'z-[70]' }: {
   const filtered = brands.filter(b => b.name.toLowerCase().includes(search.toLowerCase()))
 
   return (
-    <div
-      className={`fixed inset-0 bg-black/80 flex items-center justify-center ${zIndex} p-4`}
-      onClick={onClose}
-    >
-      <div
-        className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-md sm:max-w-3xl"
-        onClick={e => e.stopPropagation()}
-      >
+    // No backdrop-click-to-close here: a misclick outside while filling in the booking form used to
+    // silently drop whatever the person had already picked.
+    <div className={`fixed inset-0 bg-black/80 flex items-center justify-center ${zIndex} p-4`}>
+      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-md sm:max-w-3xl">
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
           <h3 className="text-white font-semibold">Выберите марку</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -186,14 +182,9 @@ export function CarFormModal({ initialData, onSave, onClose, zIndex = 'z-[60]' }
 
   return (
     <>
-      <div
-        className={`fixed inset-0 bg-black/80 flex items-center justify-center ${zIndex} p-4`}
-        onClick={onClose}
-      >
-        <div
-          className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-md"
-          onClick={e => e.stopPropagation()}
-        >
+      {/* No backdrop-click-to-close: this form has a lot of typed input, a misclick shouldn't drop it */}
+      <div className={`fixed inset-0 bg-black/80 flex items-center justify-center ${zIndex} p-4`}>
+        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-md">
           <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#2a2a2a]">
             <h3 className="text-white font-semibold">Данные автомобиля</h3>
             <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -363,14 +354,8 @@ export function ServicePickerModal({ onSelect, onClose, zIndex = 'z-[70]' }: {
   const filtered = services.filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
 
   return (
-    <div
-      className={`fixed inset-0 bg-black/80 flex items-center justify-center ${zIndex} p-4`}
-      onClick={onClose}
-    >
-      <div
-        className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-md"
-        onClick={e => e.stopPropagation()}
-      >
+    <div className={`fixed inset-0 bg-black/80 flex items-center justify-center ${zIndex} p-4`}>
+      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-md">
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
           <h3 className="text-white font-semibold">Выберите услугу</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -436,14 +421,8 @@ export function ModelPickerModal({ brandId, onSelect, onClose, zIndex = 'z-[70]'
   const filtered = models.filter(m => m.name.toLowerCase().includes(search.toLowerCase()))
 
   return (
-    <div
-      className={`fixed inset-0 bg-black/80 flex items-center justify-center ${zIndex} p-4`}
-      onClick={onClose}
-    >
-      <div
-        className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-lg sm:max-w-4xl"
-        onClick={e => e.stopPropagation()}
-      >
+    <div className={`fixed inset-0 bg-black/80 flex items-center justify-center ${zIndex} p-4`}>
+      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-lg sm:max-w-4xl">
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
           <h3 className="text-white font-semibold">Выберите модель</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>

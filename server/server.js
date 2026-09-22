@@ -168,7 +168,8 @@ function mapAppointment(row) {
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
     source: row.source || undefined,
   }
-  if (row.oil_brand || row.oil_filter || row.air_filter || row.cabin_filter || row.service_notes) {
+  if (row.oil_brand || row.oil_filter || row.air_filter || row.cabin_filter || row.service_notes
+      || (Array.isArray(row.used_items) && row.used_items.length) || row.service_prices) {
     apt.serviceRecord = {
       oil: row.oil_brand ? {
         brand: row.oil_brand, viscosity: row.oil_viscosity || '', liters: Number(row.oil_liters) || 0,
@@ -177,8 +178,10 @@ function mapAppointment(row) {
       oilFilter: row.oil_filter || undefined,
       airFilter: row.air_filter || undefined,
       cabinFilter: row.cabin_filter || undefined,
+      items: Array.isArray(row.used_items) && row.used_items.length ? row.used_items : undefined,
       notes: row.service_notes || undefined,
       total: Number(row.total) || 0,
+      servicePrices: row.service_prices || undefined,
     }
   }
   return apt
@@ -221,11 +224,13 @@ function mapHistory(h) {
       cabin: h.cabin_filter || undefined,
       fuel: h.fuel_filter || undefined,
     },
+    items: Array.isArray(h.used_items) && h.used_items.length ? h.used_items : undefined,
     antifreeze: h.antifreeze || undefined,
     freon: h.freon || undefined,
     masterNotes: h.master_notes || undefined,
     total: Number(h.total) || 0,
     masterName: h.master_name || '',
+    servicePrices: h.service_prices || undefined,
   }
 }
 
@@ -505,6 +510,9 @@ app.patch('/api/appointments/:id', auth, async (req, res) => {
       if (sr.airFilter !== undefined) add('air_filter', sr.airFilter)
       if (sr.cabinFilter !== undefined) add('cabin_filter', sr.cabinFilter)
       if (sr.notes !== undefined) add('service_notes', sr.notes)
+      // Free-form materials (antifreeze, freon, brake fluid, other) picked from the warehouse at completion
+      if (sr.items !== undefined) { fields.push(`used_items=$${i++}::jsonb`); vals.push(JSON.stringify(sr.items || [])) }
+      if (sr.servicePrices !== undefined) { fields.push(`service_prices=$${i++}::jsonb`); vals.push(JSON.stringify(sr.servicePrices || {})) }
     }
     if (!fields.length) return res.json({ ok: true })
     const { rows: [prev] } = await pool.query('SELECT status, date, time FROM appointments WHERE id=$1', [req.params.id])
@@ -516,7 +524,7 @@ app.patch('/api/appointments/:id', auth, async (req, res) => {
         `SELECT client_id, car_id, client_name, client_phone, car_make, car_model, car_year,
                 license_plate, engine_type, engine_volume, mileage, vin, date, services,
                 oil_brand, oil_viscosity, oil_liters, oil_price, oil_cost, oil_filter, air_filter, cabin_filter,
-                service_notes, total, master_id
+                service_notes, total, master_id, used_items, service_prices
          FROM appointments WHERE id=$1`,
         [req.params.id]
       )
@@ -547,14 +555,15 @@ app.patch('/api/appointments/:id', auth, async (req, res) => {
           await pool.query(`
             INSERT INTO service_history
               (car_id, date, mileage, services, oil_brand, oil_viscosity, oil_liters, oil_price, oil_cost,
-               oil_filter, air_filter, cabin_filter, master_notes, total, master_name)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+               oil_filter, air_filter, cabin_filter, master_notes, total, master_name, used_items, service_prices)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb)
           `, [
             apt.car_id, apt.date, apt.mileage || 0, apt.services || [],
             apt.oil_brand || null, apt.oil_viscosity || null, apt.oil_liters || null,
             apt.oil_price ?? null, apt.oil_cost ?? null,
             apt.oil_filter || null, apt.air_filter || null, apt.cabin_filter || null,
             apt.service_notes || null, apt.total || 0, masterRow?.name || null,
+            JSON.stringify(apt.used_items || []), JSON.stringify(apt.service_prices || {}),
           ])
         } catch (e) { console.error('service_history insert error:', e) }
       }
@@ -1528,9 +1537,15 @@ app.get('/api/analytics', auth, async (req, res) => {
           COALESCE(AVG(total), 0)          AS avg_check,
           COUNT(*)                         AS total_orders,
           COALESCE(SUM(oil_liters), 0)     AS oil_used,
+          -- Old orders recorded up to 3 fixed filter slots; new ones pick any number of filters
+          -- freely from the warehouse (used_items), so both are counted here.
           COUNT(CASE WHEN oil_filter   IS NOT NULL AND oil_filter   != '' THEN 1 END) +
           COUNT(CASE WHEN air_filter   IS NOT NULL AND air_filter   != '' THEN 1 END) +
-          COUNT(CASE WHEN cabin_filter IS NOT NULL AND cabin_filter != '' THEN 1 END) AS filters_changed
+          COUNT(CASE WHEN cabin_filter IS NOT NULL AND cabin_filter != '' THEN 1 END) +
+          COALESCE(SUM((
+            SELECT COUNT(*) FROM jsonb_array_elements(COALESCE(used_items, '[]'::jsonb)) it
+            WHERE it->>'category' = 'filter'
+          )), 0) AS filters_changed
         FROM appointments WHERE status = 'completed'
         AND date BETWEEN $1::date AND $2::date
       `, [dateFrom, dateTo]),
@@ -1622,7 +1637,7 @@ app.get('/api/analytics', auth, async (req, res) => {
 })
 
 app.listen(PORT, async () => {
-  for (const file of ['005_oil_cost.sql', '006_car_delete_requests.sql', '007_car_archive.sql', '008_request_kind_new_clients.sql', '009_appointment_source.sql']) {
+  for (const file of ['005_oil_cost.sql', '006_car_delete_requests.sql', '007_car_archive.sql', '008_request_kind_new_clients.sql', '009_appointment_source.sql', '010_service_materials.sql']) {
     await pool.query(fs.readFileSync(path.join(__dirname, '../database/migrations', file), 'utf8'))
       .catch(e => console.error(`${file} migration:`, e.message))
   }

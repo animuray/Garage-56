@@ -4,6 +4,7 @@ import { Save, Building2, Clock, Phone, Bell, LayoutGrid, Eye, Trash2, Plus, Gri
 import { api } from '../../api'
 import { BrandLogo, brandLogoPath, CAR_BRANDS, type CarBrand } from '../../components/CarFormModal'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { Caption } from '../../components/ui'
 
 interface WhyBlock { id: string; title: string; desc: string; imageUrl: string }
 interface CarModel { id: number; brand_id: number; name: string; image_url: string | null }
@@ -18,10 +19,12 @@ const DEFAULT_WHY: WhyBlock[] = [
   { id: '6', title: 'Современное оборудование', desc: 'Профессиональный инструмент и оборудование', imageUrl: '' },
 ]
 
-const Input = ({ label, value, onChange, placeholder, type = 'text' }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string
+const Input = ({ label, value, onChange, placeholder, type = 'text', className = '' }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; className?: string
 }) => (
-  <div>
+  // flex-1 + min-w-0: so two Inputs sharing a row (e.g. "Открытие — Закрытие") split it evenly
+  // instead of each shrinking to the browser's default input width and leaving the row lopsided.
+  <div className={`flex-1 min-w-0 ${className}`}>
     <label className="block text-xs text-gray-400 mb-1.5 font-medium">{label}</label>
     <input type={type} value={value} onChange={e => onChange(e.target.value)}
       placeholder={placeholder} className="input-field" />
@@ -33,9 +36,9 @@ function Section({ icon, title, subtitle, actions, children }: {
 }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="card mb-4">
+    <div className="card mb-4 overflow-hidden">
       <div
-        className="w-full text-left px-5 py-4 cursor-pointer"
+        className={`w-full text-left px-5 py-4 cursor-pointer hover:bg-white/[0.03] transition-colors ${open ? 'rounded-t-xl' : 'rounded-xl'}`}
         onClick={() => setOpen(o => !o)}
       >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -45,7 +48,7 @@ function Section({ icon, title, subtitle, actions, children }: {
             {subtitle && <span className="text-xs text-gray-600 hidden sm:inline">{subtitle}</span>}
           </div>
           <div className="flex items-center gap-2 ml-auto">
-            {actions && <div className="flex items-center gap-2 flex-wrap" onClick={e => e.stopPropagation()}>{actions}</div>}
+            {actions && <div className="flex items-center gap-2 flex-wrap">{actions}</div>}
             <ChevronDown size={16} className={`text-gray-500 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
           </div>
         </div>
@@ -86,8 +89,8 @@ function BlockModal({ block, onSave, onClose }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-6 w-full max-w-md">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-white font-semibold">{isNew ? 'Новый блок' : 'Редактировать блок'}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -165,8 +168,8 @@ function BlockModal({ block, onSave, onClose }: {
 // ─── Preview modal ─────────────────────────────────────────────────────────────
 function PreviewModal({ blocks, onClose }: { blocks: WhyBlock[]; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-start justify-center z-50 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl w-full max-w-4xl my-8" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/80 flex items-start justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl w-full max-w-4xl my-8">
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a2a2a]">
           <span className="text-white font-semibold text-sm">Предпросмотр — Главная страница</span>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -239,8 +242,8 @@ function BrandEditModal({ brand, onSave, onClose }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-sm">
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#2a2a2a]">
           <h3 className="text-white font-semibold">{isNew ? 'Добавить марку' : 'Редактировать марку'}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -355,8 +358,8 @@ function ModelEditModal({ model, onSave, onClose }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-sm">
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#2a2a2a]">
           <h3 className="text-white font-semibold">{isNew ? 'Добавить модель' : 'Редактировать модель'}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -449,8 +452,8 @@ function SocialLinkModal({ link, onSave, onClose }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-6 w-full max-w-md">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-white font-semibold">{isNew ? 'Новый контакт' : 'Редактировать контакт'}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -658,6 +661,8 @@ export default function SettingsPage() {
         </button>
       </div>
 
+      {/* Two independent columns, so paired sections are chosen to keep both columns roughly the
+          same height (Контакты is short, so it is paired with the taller Онлайн-запись, etc.) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div>
           <Section icon={<Building2 size={18} />} title="Информация о сервисе">
@@ -679,6 +684,51 @@ export default function SettingsPage() {
             </div>
           </Section>
 
+          <Section icon={<Clock size={18} />} title="Часы работы">
+            <div className="space-y-4">
+              <div>
+                <div className="text-xs text-gray-400 mb-2 font-medium">Понедельник — Пятница</div>
+                <div className="flex items-end gap-3">
+                  <Input type="time" label="Открытие" value={weekdayOpen} onChange={setWeekdayOpen} placeholder="09:00" />
+                  <span className="text-gray-500 pb-2.5">—</span>
+                  <Input type="time" label="Закрытие" value={weekdayClose} onChange={setWeekdayClose} placeholder="19:00" />
+                </div>
+              </div>
+
+              {/* Weekend, set apart from weekdays so it doesn't read as just another workday */}
+              <div className="pt-4 border-t border-[#2a2a2a] space-y-3">
+                <Caption>Выходные дни</Caption>
+                <div>
+                  <div className="text-xs text-gray-400 mb-2 font-medium">Суббота</div>
+                  <div className="flex items-end gap-3">
+                    <Input type="time" label="Открытие" value={satOpen} onChange={setSatOpen} placeholder="09:00" />
+                    <span className="text-gray-500 pb-2.5">—</span>
+                    <Input type="time" label="Закрытие" value={satClose} onChange={setSatClose} placeholder="18:00" />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs text-gray-400 font-medium">Воскресенье</div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={sunClosed} onChange={e => setSunClosed(e.target.checked)}
+                        className="accent-orange-500" />
+                      <span className="text-xs text-gray-500">Выходной</span>
+                    </label>
+                  </div>
+                  {!sunClosed && (
+                    <div className="flex items-end gap-3">
+                      <Input type="time" label="Открытие" value={sunOpen} onChange={setSunOpen} placeholder="10:00" />
+                      <span className="text-gray-500 pb-2.5">—</span>
+                      <Input type="time" label="Закрытие" value={sunClose} onChange={setSunClose} placeholder="17:00" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Section>
+        </div>
+
+        <div>
           <Section icon={<Phone size={18} />} title="Контакты">
             <div className="space-y-3">
               <Input label="Основной телефон" value={phone} onChange={setPhone} placeholder="+7 (701) 123-45-67" />
@@ -717,46 +767,6 @@ export default function SettingsPage() {
                     <div className="text-center py-3 text-gray-600 text-xs">Добавьте WhatsApp, Instagram, 2GIS и т.д.</div>
                   )}
                 </div>
-              </div>
-            </div>
-          </Section>
-        </div>
-
-        <div>
-          <Section icon={<Clock size={18} />} title="Часы работы">
-            <div className="space-y-3">
-              <div>
-                <div className="text-xs text-gray-400 mb-2 font-medium">Понедельник — Пятница</div>
-                <div className="flex items-center gap-3">
-                  <Input label="Открытие" value={weekdayOpen} onChange={setWeekdayOpen} placeholder="09:00" />
-                  <span className="text-gray-500 mt-5">—</span>
-                  <Input label="Закрытие" value={weekdayClose} onChange={setWeekdayClose} placeholder="19:00" />
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-2 font-medium">Суббота</div>
-                <div className="flex items-center gap-3">
-                  <Input label="Открытие" value={satOpen} onChange={setSatOpen} placeholder="09:00" />
-                  <span className="text-gray-500 mt-5">—</span>
-                  <Input label="Закрытие" value={satClose} onChange={setSatClose} placeholder="18:00" />
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs text-gray-400 font-medium">Воскресенье</div>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={sunClosed} onChange={e => setSunClosed(e.target.checked)}
-                      className="accent-orange-500" />
-                    <span className="text-xs text-gray-500">Выходной</span>
-                  </label>
-                </div>
-                {!sunClosed && (
-                  <div className="flex items-center gap-3">
-                    <Input label="Открытие" value={sunOpen} onChange={setSunOpen} placeholder="10:00" />
-                    <span className="text-gray-500 mt-5">—</span>
-                    <Input label="Закрытие" value={sunClose} onChange={setSunClose} placeholder="17:00" />
-                  </div>
-                )}
               </div>
             </div>
           </Section>
@@ -840,15 +850,17 @@ export default function SettingsPage() {
                 {importResult}
               </div>
             )}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+            {/* Same tile recipe as the customer-facing brand picker (CarFormModal), just denser and
+                with edit/delete on hover — 20 brands as 56px logo tiles was taking up the whole page */}
+            <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-6 gap-2">
               {brands.map(b => (
                 <div
                   key={b.id}
                   onClick={() => setSelectedBrandId(b.id)}
-                  className="bg-[#111] border border-[#2a2a2a] rounded-xl p-3 flex flex-col items-center gap-2 group relative cursor-pointer hover:border-orange-500/40 transition-colors"
+                  className="bg-[#111] border border-[#2a2a2a] rounded-xl p-2.5 flex flex-col items-center gap-1.5 group relative cursor-pointer hover:border-orange-500/40 transition-colors"
                 >
                   <BrandLogo brand={b.name} imageUrl={b.image_url} size="md" />
-                  <span className="text-xs text-gray-300 font-medium text-center">{b.name}</span>
+                  <span className="text-xs text-gray-300 font-medium text-center leading-tight">{b.name}</span>
                   <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={e => { e.stopPropagation(); setEditingBrand(b) }}
@@ -885,15 +897,15 @@ export default function SettingsPage() {
             {modelsLoading ? (
               <div className="text-center py-8 text-gray-500 text-sm">Загрузка...</div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
                 {models.map(m => (
-                  <div key={m.id} className="bg-[#111] border border-[#2a2a2a] rounded-xl p-3 flex flex-col items-center gap-2 group relative">
-                    <div className="w-full aspect-square rounded-xl overflow-hidden bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center max-w-[300px] sm:max-w-[500px]">
+                  <div key={m.id} className="bg-[#111] border border-[#2a2a2a] rounded-xl p-2.5 flex flex-col items-center gap-1.5 group relative">
+                    <div className="w-full aspect-square rounded-lg overflow-hidden bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center">
                       {m.image_url
                         ? <img src={m.image_url} alt={m.name} className="w-full h-full object-cover" />
-                        : <Car size={48} className="text-gray-600" />}
+                        : <Car size={22} className="text-gray-600" />}
                     </div>
-                    <span className="text-sm text-gray-300 font-medium text-center">{m.name}</span>
+                    <span className="text-xs text-gray-300 font-medium text-center leading-tight">{m.name}</span>
                     <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => setEditingModel(m)}

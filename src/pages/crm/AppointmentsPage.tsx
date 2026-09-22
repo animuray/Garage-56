@@ -4,8 +4,9 @@ import { Search, X, Check, Plus, ChevronDown } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
 import type { Appointment, AppointmentStatus } from '../../types'
 import { appointmentRowClass } from '../../utils/appointmentStyle'
-import { OrderTag } from '../../components/OrderTags'
-import { calcOrderTotal, formatMoney } from '../../utils/pricing'
+import { OrderTag, TaxiMark } from '../../components/OrderTags'
+import { formatMoney } from '../../utils/pricing'
+import { CompleteOrderModal } from '../../components/CompleteOrderModal'
 import { BrandLogo } from '../../components/CarFormModal'
 import DatePicker from '../../components/DatePicker'
 import { api } from '../../api'
@@ -22,246 +23,6 @@ const STATUS_LABELS: Record<string, string> = {
   completed: 'Выполнено', cancelled: 'Отменено',
 }
 const TAB_STATUSES: AppointmentStatus[] = ['pending', 'in_progress', 'completed', 'cancelled']
-
-function CompleteModal({ apt, onClose, onSave }: { apt: Appointment; onClose: () => void; onSave: (data: Partial<Appointment>) => Promise<void> }) {
-  const { warehouse, updateWarehouseItem } = useApp()
-  const oils = warehouse.filter(i => i.category === 'oil')
-  const filterItems = warehouse.filter(i => i.category === 'filter')
-
-  const [oilItemId, setOilItemId] = useState('')
-  const [liters, setLiters] = useState('')
-  const [oilFilterId, setOilFilterId] = useState('')
-  const [airFilterId, setAirFilterId] = useState('')
-  const [cabinFilterId, setCabinFilterId] = useState('')
-  const [notes, setNotes] = useState('')
-  const [servicePrices, setServicePrices] = useState<Record<string, string>>(
-    Object.fromEntries((apt.services ?? []).map(s => [s, '']))
-  )
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [serviceCatalog, setServiceCatalog] = useState<{ name: string; price: number }[]>([])
-
-  useEffect(() => {
-    api.getServices().then(d => setServiceCatalog(d as { name: string; price: number }[])).catch(() => {})
-  }, [])
-
-  const selectedOil = oils.find(i => i.id === oilItemId)
-  // final price = services + oil (liters × price per liter from the warehouse)
-  const { servicesTotal, pricePerLiter, oilCost, total } = calcOrderTotal(servicePrices, selectedOil, Number(liters) || 0)
-
-  const getValidationError = (): string | null => {
-    if (!oilItemId) return 'Выберите масло со склада'
-    const litersNum = Number(liters)
-    if (!liters.trim() || isNaN(litersNum) || litersNum <= 0) return 'Укажите количество литров (например, 4.5)'
-    if (litersNum > 999) return `Количество литров (${litersNum}) слишком большое — проверьте значение`
-    if (!oilFilterId) return 'Выберите масляный фильтр со склада'
-    const unpricedService = (apt.services ?? []).find(s => !(Number(servicePrices[s]) > 0))
-    if (unpricedService) return `Укажите стоимость услуги: «${unpricedService}»`
-    return null
-  }
-
-  const validationError = getValidationError()
-
-  const handleSave = async () => {
-    if (validationError || saving) return
-    const litersNum = Number(liters)
-    const parsed = Object.fromEntries(Object.entries(servicePrices).map(([k, v]) => [k, Number(v) || 0]))
-    const oilItem = warehouse.find(i => i.id === oilItemId)!
-    const oilFilterItem = warehouse.find(i => i.id === oilFilterId)
-    const airFilterItem = airFilterId ? warehouse.find(i => i.id === airFilterId) : undefined
-    const cabinFilterItem = cabinFilterId ? warehouse.find(i => i.id === cabinFilterId) : undefined
-
-    setSaving(true)
-    setError('')
-    try {
-      await onSave({
-        status: 'completed',
-        total,
-        serviceRecord: {
-          oil: { brand: oilItem.brand ?? oilItem.name, viscosity: oilItem.name, liters: litersNum, pricePerLiter, cost: oilCost },
-          oilFilter: oilFilterItem?.name,
-          airFilter: airFilterItem?.name,
-          cabinFilter: cabinFilterItem?.name,
-          notes, total,
-          servicePrices: parsed,
-        },
-      })
-      // Deduct inventory
-      const deduct = async (item: typeof oilItem, amount: number) => {
-        const { id, ...rest } = item
-        await updateWarehouseItem(id, { ...rest, quantity: Math.max(0, item.quantity - amount) })
-      }
-      await deduct(oilItem, litersNum)
-      if (oilFilterItem) await deduct(oilFilterItem, 1)
-      if (airFilterItem) await deduct(airFilterItem, 1)
-      if (cabinFilterItem) await deduct(cabinFilterItem, 1)
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : ''
-      if (msg.toLowerCase().includes('overflow') || msg.includes('переполн')) {
-        setError('Одно из числовых значений слишком большое. Проверьте количество литров и стоимость услуг.')
-      } else {
-        setError(msg || 'Не удалось сохранить. Попробуйте ещё раз.')
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="card w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-white">Завершить заказ</h3>
-          <button onClick={onClose} disabled={saving} className="text-gray-500 hover:text-white disabled:opacity-40"><X size={18} /></button>
-        </div>
-        <div className="text-sm text-gray-400 mb-4">
-          {apt.carMake} {apt.carModel} · {apt.licensePlate} · {apt.clientName}
-        </div>
-        <div className="space-y-3">
-          {/* Oil */}
-          <div className="grid grid-cols-3 gap-2">
-            <div className="col-span-2">
-              <label className="block text-xs text-gray-400 mb-1 font-medium">Масло *</label>
-              <select value={oilItemId} onChange={e => setOilItemId(e.target.value)}
-                className={`input-field text-sm appearance-none ${!oilItemId ? 'text-gray-500' : ''}`}>
-                <option value="">— Выбрать со склада —</option>
-                {oils.map(item => (
-                  <option key={item.id} value={item.id}>
-                    {item.brand ? `${item.brand} · ` : ''}{item.name} ({item.quantity} {item.unit})
-                  </option>
-                ))}
-              </select>
-              {oils.length === 0 && <div className="text-xs text-yellow-400 mt-1">Добавьте масло на склад</div>}
-              {selectedOil && (
-                <div className="text-xs mt-1">
-                  <span className="text-gray-500">Остаток: </span>
-                  <span className={selectedOil.quantity <= 0 ? 'text-red-400' : selectedOil.quantity <= selectedOil.minQuantity ? 'text-yellow-400' : 'text-gray-400'}>
-                    {selectedOil.quantity} {selectedOil.unit}
-                  </span>
-                  <span className="text-gray-500"> · Цена: </span>
-                  {selectedOil.price > 0
-                    ? <span className="text-gray-300">{formatMoney(selectedOil.price)}/л</span>
-                    : <span className="text-orange-400">не указана на складе</span>}
-                </div>
-              )}
-            </div>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1 font-medium">Литров *</label>
-              <input type="number" min="0.1" step="0.1" value={liters} onChange={e => setLiters(e.target.value)}
-                placeholder="4.5" disabled={!!selectedOil && selectedOil.quantity <= 0}
-                className={`input-field text-sm ${selectedOil && selectedOil.quantity <= 0 ? 'opacity-40 cursor-not-allowed' : ''}`} />
-            </div>
-          </div>
-
-          {/* Oil filter */}
-          <div>
-            <label className="block text-xs text-gray-400 mb-1 font-medium">Масляный фильтр *</label>
-            <select value={oilFilterId} onChange={e => setOilFilterId(e.target.value)}
-              className={`input-field text-sm appearance-none ${!oilFilterId ? 'text-gray-500' : ''}`}>
-              <option value="">— Выбрать со склада —</option>
-              {filterItems.map(item => (
-                <option key={item.id} value={item.id}>
-                  {item.brand ? `${item.brand} · ` : ''}{item.name} ({item.quantity} {item.unit})
-                </option>
-              ))}
-            </select>
-            {filterItems.length === 0 && <div className="text-xs text-yellow-400 mt-1">Добавьте фильтры на склад</div>}
-          </div>
-
-          {/* Air filter */}
-          <div>
-            <label className="block text-xs text-gray-400 mb-1 font-medium">Воздушный фильтр</label>
-            <select value={airFilterId} onChange={e => setAirFilterId(e.target.value)}
-              className={`input-field text-sm appearance-none ${!airFilterId ? 'text-gray-500' : ''}`}>
-              <option value="">— Не использовался —</option>
-              {filterItems.map(item => (
-                <option key={item.id} value={item.id}>
-                  {item.brand ? `${item.brand} · ` : ''}{item.name} ({item.quantity} {item.unit})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Cabin filter */}
-          <div>
-            <label className="block text-xs text-gray-400 mb-1 font-medium">Салонный фильтр</label>
-            <select value={cabinFilterId} onChange={e => setCabinFilterId(e.target.value)}
-              className={`input-field text-sm appearance-none ${!cabinFilterId ? 'text-gray-500' : ''}`}>
-              <option value="">— Не использовался —</option>
-              {filterItems.map(item => (
-                <option key={item.id} value={item.id}>
-                  {item.brand ? `${item.brand} · ` : ''}{item.name} ({item.quantity} {item.unit})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-400 mb-1 font-medium">Комментарий</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)}
-              className="input-field text-sm resize-none" rows={2} placeholder="Комментарий мастера..." />
-          </div>
-
-          {/* Per-service prices */}
-          <div>
-            <label className="block text-xs text-gray-400 mb-2 font-medium">Стоимость услуг *</label>
-            <div className="space-y-2">
-              {(apt.services ?? []).map(s => {
-                const catalogPrice = serviceCatalog.find(c => c.name === s)?.price
-                return (
-                  <div key={s}>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs text-gray-500">{s}</label>
-                      {catalogPrice ? <span className="text-xs text-gray-600">≈ {catalogPrice.toLocaleString('ru-RU')} ₸</span> : null}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input type="number" min="0" value={servicePrices[s] ?? ''}
-                        onChange={e => setServicePrices(prev => ({ ...prev, [s]: e.target.value }))}
-                        className="input-field flex-1" placeholder="Стоимость" />
-                      <span className="text-gray-500 text-sm shrink-0">₸</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            <div className="mt-3 pt-3 border-t border-[#2a2a2a] space-y-1.5 text-sm">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-500">Услуги</span>
-                <span className="text-gray-300">{formatMoney(servicesTotal)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-500">
-                  Масло{selectedOil && Number(liters) > 0 ? ` (${Number(liters)} л × ${formatMoney(pricePerLiter)})` : ''}
-                </span>
-                <span className="text-gray-300">{formatMoney(oilCost)}</span>
-              </div>
-              {selectedOil && !(pricePerLiter > 0) && (
-                <div className="text-xs text-orange-400">У масла не указана цена за литр — заполните её на складе, иначе оно не попадёт в стоимость.</div>
-              )}
-              <div className="flex justify-between items-center pt-1.5 border-t border-[#2a2a2a]">
-                <span className="text-gray-400 font-medium">Итого</span>
-                <span className="text-white font-bold text-base">{formatMoney(total)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        {(validationError || error) && (
-          <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
-            {error || validationError}
-          </div>
-        )}
-        <div className="flex gap-3 mt-5">
-          <button onClick={onClose} disabled={saving} className="btn-outline flex-1 disabled:opacity-40">Отмена</button>
-          <button onClick={handleSave} disabled={!!validationError || saving}
-            className="btn-orange flex-1 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
-            {saving ? 'Сохранение...' : 'Сохранить'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function EditModal({ apt, employees, onClose, onSave }: {
   apt: Appointment
@@ -292,8 +53,8 @@ function EditModal({ apt, employees, onClose, onSave }: {
   const masters = employees.filter(e => e.isActive && ['master', 'admin', 'owner'].includes((e.role ?? '').toLowerCase()))
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="card w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="card w-full max-w-md p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-white">Изменить запись</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -367,8 +128,8 @@ function CancelModal({ apt, onClose, onConfirm }: { apt: Appointment; onClose: (
   const [reason, setReason] = useState('')
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="card w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="card w-full max-w-sm p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-white">Отмена записи</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -531,7 +292,10 @@ export default function AppointmentsPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-1.5">
-                  <span className="text-white text-sm font-medium">{apt.clientName}</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <TaxiMark apt={apt} isNew={!!newBookings[apt.id]} />
+                    <span className="text-white text-sm font-medium">{apt.clientName}</span>
+                  </span>
                   <OrderTag apt={apt} isNew={!!newBookings[apt.id]} />
                   <span className="text-gray-500 text-xs">{apt.clientPhone}</span>
                 </div>
@@ -556,7 +320,7 @@ export default function AppointmentsPage() {
 
               {/* Expanded body */}
               {isOpen && (
-                <div className="border-t border-[#2a2a2a] p-3 space-y-3" onClick={e => e.stopPropagation()}>
+                <div className="border-t border-[#2a2a2a] p-3 space-y-3">
                   {apt.services.length > 0 && (
                     <div>
                       <div className="text-gray-500 text-xs mb-1.5 font-medium">Услуги</div>
@@ -651,6 +415,7 @@ export default function AppointmentsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-white flex items-center gap-2">
+                        <TaxiMark apt={apt} isNew={!!newBookings[apt.id]} />
                         {apt.clientName}
                         <OrderTag apt={apt} isNew={!!newBookings[apt.id]} />
                       </div>
@@ -665,7 +430,7 @@ export default function AppointmentsPage() {
                         {apt.services.join(', ')}
                       </div>
                     </td>
-                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    <td className="px-4 py-3">
                       {apt.status !== 'cancelled' && apt.status !== 'completed' ? (() => {
                         const masters = employees.filter(e => e.isActive && ['master', 'admin', 'owner'].includes((e.role ?? '').toLowerCase()))
                         const open = masterOpenId === apt.id
@@ -691,7 +456,7 @@ export default function AppointmentsPage() {
                               <div
                                 className="fixed bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg z-[200] shadow-xl inline-flex flex-col"
                                 style={{ top: masterDropdownPos.top, left: masterDropdownPos.left }}
-                                onClick={e => e.stopPropagation()}
+                               
                               >
                                 <button type="button"
                                   onClick={() => { updateAppointment(apt.id, { masterId: undefined }); setMasterOpenId(null) }}
@@ -724,7 +489,7 @@ export default function AppointmentsPage() {
                       )}
                       {apt.total ? <div className="text-green-400 text-xs font-medium mt-0.5">{apt.total.toLocaleString('ru-RU')} ₸</div> : null}
                     </td>
-                    {showActions && <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    {showActions && <td className="px-4 py-3">
                       <div className="flex gap-2">
                         {apt.status === 'pending' && (
                           <button
@@ -775,8 +540,8 @@ export default function AppointmentsPage() {
 
       {/* Detail modal */}
       {selected && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setSelected(null)}>
-          <div className="card w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="card w-full max-w-md p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-white">Детали записи</h3>
               <button onClick={() => setSelected(null)} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -895,6 +660,19 @@ export default function AppointmentsPage() {
                         </div>
                       </div>
                     )}
+                    {selected.serviceRecord.items && selected.serviceRecord.items.filter(it => it.category !== 'oil').length > 0 && (
+                      <div className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-lg p-3">
+                        <div className="text-gray-500 text-xs mb-2">Материалы</div>
+                        <div className="space-y-1.5 text-xs">
+                          {selected.serviceRecord.items.filter(it => it.category !== 'oil').map((it, idx) => (
+                            <div key={idx} className="flex justify-between items-center">
+                              <span className="text-gray-200">{it.brand ? `${it.brand} · ` : ''}{it.name} <span className="text-gray-500">× {it.quantity} {it.unit}</span></span>
+                              <span className="text-white font-medium">{formatMoney(it.cost)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {selected.serviceRecord.servicePrices && Object.keys(selected.serviceRecord.servicePrices).length > 0 && (
                       <div className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-lg p-3">
                         <div className="text-gray-500 text-xs mb-2">Разбивка по услугам</div>
@@ -924,7 +702,7 @@ export default function AppointmentsPage() {
 
       {/* Complete modal */}
       {completing && (
-        <CompleteModal
+        <CompleteOrderModal
           apt={completing}
           onClose={() => setCompleting(null)}
           onSave={async (data) => { await updateAppointment(completing.id, data); setCompleting(null) }}

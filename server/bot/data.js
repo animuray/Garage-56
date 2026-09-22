@@ -335,7 +335,7 @@ async function getReportRows(corporateId, from, to) {
     SELECT a.id, a.date, a.time, a.license_plate, a.car_make, a.car_model, a.mileage,
            a.services, a.oil_brand, a.oil_viscosity, a.oil_liters, a.oil_filter,
            a.air_filter, a.cabin_filter, a.service_notes, a.total, a.oil_cost, a.car_id,
-           e.name AS master_name
+           a.used_items, e.name AS master_name
     FROM appointments a LEFT JOIN employees e ON e.id = a.master_id
     WHERE a.status = 'completed'
       AND a.date BETWEEN $2::date AND $3::date

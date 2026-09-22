@@ -85,8 +85,8 @@ function ClientEditModal({ client, onClose, onSave }: {
 
   return (
     <>
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="card w-full max-w-md p-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="card w-full max-w-md p-5 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-white">{isNew ? 'Новый клиент' : 'Редактировать клиента'}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -180,8 +180,8 @@ function ClientDetail({ client, onClose, onEdit, onDelete, brandsMap }: {
   const data = fullClient ?? client
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="card w-full max-w-xl p-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="card w-full max-w-xl p-5 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-[#2a2a2a] flex items-center justify-center text-orange-400 font-bold text-lg">
@@ -286,8 +286,8 @@ function ClientDetail({ client, onClose, onEdit, onDelete, brandsMap }: {
 
       {/* Appointment detail modal */}
       {selectedApt && (
-        <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4" onClick={() => setSelectedApt(null)}>
-          <div className="card w-full max-w-md p-5 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4">
+          <div className="card w-full max-w-md p-5 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-white">Детали записи</h3>
               <button onClick={() => setSelectedApt(null)} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -352,6 +352,19 @@ function ClientDetail({ client, onClose, onEdit, onDelete, brandsMap }: {
                           {selectedApt.serviceRecord.oilFilter && <div><span className="text-gray-500">Масляный: </span><span className="text-gray-200">{selectedApt.serviceRecord.oilFilter}</span></div>}
                           {selectedApt.serviceRecord.airFilter && <div><span className="text-gray-500">Воздушный: </span><span className="text-gray-200">{selectedApt.serviceRecord.airFilter}</span></div>}
                           {selectedApt.serviceRecord.cabinFilter && <div><span className="text-gray-500">Салонный: </span><span className="text-gray-200">{selectedApt.serviceRecord.cabinFilter}</span></div>}
+                        </div>
+                      </div>
+                    )}
+                    {selectedApt.serviceRecord.items && selectedApt.serviceRecord.items.filter(it => it.category !== 'oil').length > 0 && (
+                      <div className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-lg p-3">
+                        <div className="text-gray-500 text-xs mb-2">Материалы</div>
+                        <div className="space-y-1.5 text-xs">
+                          {selectedApt.serviceRecord.items.filter(it => it.category !== 'oil').map((it, idx) => (
+                            <div key={idx} className="flex justify-between items-center">
+                              <span className="text-gray-200">{it.brand ? `${it.brand} · ` : ''}{it.name} <span className="text-gray-500">× {it.quantity} {it.unit}</span></span>
+                              <span className="text-white font-medium">{formatMoney(it.cost)}</span>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}

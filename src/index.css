@@ -7,6 +7,10 @@
   --bg: #0f0f0f;
   --card: #1a1a1a;
   --border: #2a2a2a;
+  /* The whole app is dark-only (no light mode). This tells the browser so its own native UI —
+     the time/date picker popup, scrollbars, etc. — draws itself in a dark palette instead of the
+     default light one, which is what actually controls that popup's look, not our CSS. */
+  color-scheme: dark;
 }
 
 * {
@@ -30,6 +34,29 @@ body {
 ::-webkit-scrollbar-thumb {
   background: #f97316;
   border-radius: 3px;
+}
+
+/* The browser's default number-input spin arrows are a white box that clashes with the dark
+   theme everywhere they appear — quantity, price, etc. Hidden app-wide; typing still works fine. */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+/* color-scheme: dark (above) already makes the browser draw the time/date picker icon and its
+   popup in a dark palette; just dim the icon a little so it doesn't compete with real content. */
+input[type='time']::-webkit-calendar-picker-indicator,
+input[type='date']::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+  cursor: pointer;
+}
+input[type='time']::-webkit-calendar-picker-indicator:hover,
+input[type='date']::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
 }
 
 @layer utilities {

@@ -7,10 +7,10 @@ export function ConfirmDialog({ message, onConfirm, onCancel, confirmLabel = 'У
   confirmLabel?: string
 }) {
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4" onClick={onCancel}>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
       <div
         className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-sm"
-        onClick={e => e.stopPropagation()}
+       
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#2a2a2a]">
           <h3 className="text-white font-semibold">Подтверждение</h3>

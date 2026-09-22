@@ -68,8 +68,8 @@ function CorpModal({ company, onClose, onSave }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="card w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="card w-full max-w-md p-5">
         <div className="flex items-center justify-between mb-5">
           <h3 className="font-semibold text-white">{company ? 'Редактировать компанию' : 'Добавить компанию'}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -396,9 +396,9 @@ function CompanyDetail({ company, onClose, onEdit, canManageTelegram, requests, 
     s + Object.values(h.filters).filter(Boolean).length, 0)
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
       {/* Fixed-size window: the header and tabs never move, only the content below them scrolls */}
-      <div data-testid="company-modal" className="card w-full max-w-3xl h-[min(88vh,780px)] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div data-testid="company-modal" className="card w-full max-w-3xl h-[min(88vh,780px)] flex flex-col overflow-hidden">
         <div data-testid="company-modal-header" className="shrink-0 px-5 pt-5">
         <div className="flex items-center justify-between mb-4">
           <div>

@@ -160,8 +160,8 @@ async function askCode(ctx, warn) {
   sess(ctx).mode = 'code'
   await show(ctx,
     (warn ? `⚠️ ${warn}\n\n` : '') + head('🔑', 'Вход') +
-    '\nВведите код подключения, который вам выдал Garage 56.\n\n<i>Формат:</i> <code>G56-482915</code>',
-    new InlineKeyboard().text('◀️ Назад', 'auth|back'), { placeholder: 'Код подключения, например G56-482915' })
+    '\nВведите код подключения, который вам выдал Garage 56.',
+    new InlineKeyboard().text('◀️ Назад', 'auth|back'), { placeholder: 'Код подключения' })
 }
 
 async function showAccessInfo(ctx) {
@@ -361,15 +361,19 @@ async function showHistory(ctx, carId, offset) {
       ? `🛢 ${esc(h.oil_brand)}${h.oil_viscosity ? ' ' + esc(h.oil_viscosity) : ''}${h.oil_liters ? ` · ${R.fmtLiters(h.oil_liters)} л` : ''}` +
         (Number(h.oil_cost) ? ` · ${fmtInt(h.oil_cost)} ₸` : '')
       : null
-    const parts = [
-      h.oil_filter && `масляный ${esc(h.oil_filter)}`, h.air_filter && `воздушный ${esc(h.air_filter)}`,
-      h.cabin_filter && `салонный ${esc(h.cabin_filter)}`, h.fuel_filter && `топливный ${esc(h.fuel_filter)}`,
-    ].filter(Boolean)
+    // The master now picks materials freely from the warehouse (used_items) instead of a fixed
+    // oil/filter template; older records only have the legacy oil_filter/air_filter/... columns.
+    const items = Array.isArray(h.used_items) ? h.used_items : []
+    const filterNames = items.length
+      ? items.filter(it => it.category === 'filter').map(it => it.name)
+      : [h.oil_filter, h.air_filter, h.cabin_filter, h.fuel_filter].filter(Boolean)
+    const otherNames = items.filter(it => it.category && it.category !== 'oil' && it.category !== 'filter').map(it => it.name)
     return [
       `📅 <b>${fmtDate(h.date)}</b> · ${fmtInt(h.mileage)} км`,
       (h.services || []).length ? `🔧 ${esc(h.services.join(', '))}` : null,
       oil,
-      parts.length ? `🔩 Фильтры: ${parts.join(', ')}` : null,
+      filterNames.length ? `🔩 Фильтры: ${esc(filterNames.join(', '))}` : null,
+      otherNames.length ? `🧴 Материалы: ${esc(otherNames.join(', '))}` : null,
       h.master_name ? `👨‍🔧 ${esc(h.master_name)}` : null,
       h.master_notes ? `💬 <i>${esc(h.master_notes)}</i>` : null,
       `💰 <b>${fmtInt(h.total)} ₸</b>`,
@@ -737,9 +741,9 @@ async function showAppointments(ctx, tab = 'active', offset = 0) {
   const pages = Math.max(1, Math.ceil(total / APT_PAGE))
   if (pages > 1) {
     const page = Math.floor(offset / APT_PAGE)
-    if (page > 0) kb.text('◀️', `apts|${tab}|${offset - APT_PAGE}`)
-    kb.text(`${page + 1}/${pages}`, 'noop')
-    if (page < pages - 1) kb.text('▶️', `apts|${tab}|${offset + APT_PAGE}`)
+    if (page > 0) kb.text('◀️ Назад', `apts|${tab}|${offset - APT_PAGE}`)
+    kb.text(`Страница ${page + 1} из ${pages}`, 'noop')
+    if (page < pages - 1) kb.text('Вперёд ▶️', `apts|${tab}|${offset + APT_PAGE}`)
     kb.row()
   }
   kb.text('📅 Новая запись', 'book').row()

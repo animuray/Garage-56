@@ -75,8 +75,8 @@ function EmployeeModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="card w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="card w-full max-w-md p-5">
         <div className="flex items-center justify-between mb-5">
           <h3 className="font-semibold text-white">{employee ? 'Редактировать сотрудника' : 'Добавить сотрудника'}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>

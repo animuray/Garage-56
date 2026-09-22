@@ -2,18 +2,11 @@ import { useState } from 'react'
 import { Search, X, AlertTriangle, Plus, Pencil, Trash2, Check } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
 import type { WarehouseItem } from '../../types'
+import { CATEGORY_COLORS } from '../../utils/warehouseCategories'
 
 const CATEGORY_LABELS: Record<string, string> = {
   oil: 'Масла', filter: 'Фильтры', antifreeze: 'Антифриз',
   freon: 'Фреон', brake_fluid: 'Тормозная жидкость', other: 'Другое',
-}
-const CATEGORY_COLORS: Record<string, string> = {
-  oil: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
-  filter: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
-  antifreeze: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
-  freon: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
-  brake_fluid: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20',
-  other: 'text-gray-400 bg-gray-500/10 border-gray-500/20',
 }
 const CATEGORIES = Object.keys(CATEGORY_LABELS) as WarehouseItem['category'][]
 
@@ -76,8 +69,8 @@ function ItemModal({ item, onClose, onSave }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="card w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="card w-full max-w-md p-5">
         <div className="flex items-center justify-between mb-5">
           <h3 className="font-semibold text-white">{item ? 'Редактировать позицию' : 'Добавить позицию'}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -373,8 +366,8 @@ export default function WarehousePage() {
       )}
 
       {deleting && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setDeleting(null)}>
-          <div className="card w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="card w-full max-w-sm p-5">
             <h3 className="font-semibold text-white mb-2">Удалить позицию?</h3>
             <p className="text-gray-400 text-sm mb-5">{deleting.name} — {deleting.quantity} {deleting.unit}</p>
             <div className="flex gap-3">

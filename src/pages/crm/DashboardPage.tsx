@@ -9,7 +9,7 @@ import { api } from '../../api'
 import DatePicker from '../../components/DatePicker'
 import type { Appointment } from '../../types'
 import { appointmentRowClass } from '../../utils/appointmentStyle'
-import { OrderTag } from '../../components/OrderTags'
+import { OrderTag, TaxiMark } from '../../components/OrderTags'
 
 // Compute current UTC+5 date on demand so it stays correct after midnight
 const getToday = () => new Date(Date.now() + 5 * 3600 * 1000).toISOString().split('T')[0]
@@ -226,7 +226,10 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2 mb-1">
-                  <span className="text-white text-sm font-medium">{apt.clientName}</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <TaxiMark apt={apt} />
+                    <span className="text-white text-sm font-medium">{apt.clientName}</span>
+                  </span>
                   <OrderTag apt={apt} />
                   {master && <span className="text-gray-500 text-xs">· {master.name}</span>}
                 </div>
@@ -266,7 +269,7 @@ export default function DashboardPage() {
                       <div className="text-gray-500 text-xs">{apt.date.split('-').reverse().join('.')}</div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-white text-sm flex items-center gap-2">{apt.clientName}<OrderTag apt={apt} /></div>
+                      <div className="text-white text-sm flex items-center gap-2"><TaxiMark apt={apt} />{apt.clientName}<OrderTag apt={apt} /></div>
                       <div className="text-gray-500 text-xs">{apt.clientPhone}</div>
                     </td>
                     <td className="px-4 py-3">
@@ -299,8 +302,8 @@ export default function DashboardPage() {
 
       {/* Services modal */}
       {servicesModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setServicesModal(false)}>
-          <div className="card w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="card w-full max-w-sm p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-white">Популярные услуги</h3>
               <button onClick={() => setServicesModal(false)} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -327,8 +330,8 @@ export default function DashboardPage() {
 
       {/* Oil brands modal */}
       {oilModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setOilModal(false)}>
-          <div className="card w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="card w-full max-w-sm p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-white">Расход масел</h3>
               <button onClick={() => setOilModal(false)} className="text-gray-500 hover:text-white"><X size={18} /></button>
@@ -363,8 +366,8 @@ export default function DashboardPage() {
 
       {/* Appointment detail modal */}
       {selectedApt && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setSelectedApt(null)}>
-          <div className="card w-full max-w-md p-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="card w-full max-w-md p-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-white">Детали записи</h3>
               <button onClick={() => setSelectedApt(null)} className="text-gray-500 hover:text-white"><X size={18} /></button>

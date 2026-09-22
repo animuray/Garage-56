@@ -391,9 +391,8 @@ export default function AnalyticsPage() {
 
       {/* Master detail modal */}
       {selectedMasterName && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
-          onClick={() => { setSelectedMasterName(null); setSelectedClientName(null) }}>
-          <div className="card w-full max-w-md p-5 max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="card w-full max-w-md p-5 max-h-[85vh] flex flex-col">
 
             {/* Header */}
             <div className="flex items-center justify-between mb-4 shrink-0">

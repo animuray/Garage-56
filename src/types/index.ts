@@ -54,11 +54,24 @@ export interface CompletedServiceRecord {
   airFilter?: string;
   cabinFilter?: string;
   fuelFilter?: string;
-  antifreeze?: string;
+  items?: UsedItem[];     // anything else taken from the warehouse (antifreeze, freon, brake fluid, other) —
+                           // picked freely at completion, not a fixed template
+  antifreeze?: string;    // kept only so records written before `items` existed still render
   freon?: string;
   notes?: string;
   total: number;
   servicePrices?: Record<string, number>;
+}
+
+/** One warehouse item used up on a job, recorded at whatever price it had at the time. */
+export interface UsedItem {
+  name: string;
+  category: WarehouseItem['category'];
+  brand?: string;
+  quantity: number;
+  unit: string;
+  pricePerUnit: number;
+  cost: number;
 }
 
 export interface Client {
@@ -106,11 +119,13 @@ export interface ServiceHistoryEntry {
   services: string[];
   oil?: OilUsage;
   filters: { oil?: string; air?: string; cabin?: string; fuel?: string };
+  items?: UsedItem[];      // other materials used (antifreeze, freon, brake fluid, other)
   antifreeze?: string;
   freon?: string;
   masterNotes?: string;
   total: number;
   masterName: string;
+  servicePrices?: Record<string, number>;
 }
 
 export interface CorporateClient {

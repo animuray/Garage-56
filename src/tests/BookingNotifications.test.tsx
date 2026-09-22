@@ -185,11 +185,12 @@ describe('order lists: taxi fleet tag and hover colour', () => {
   beforeEach(() => { vi.clearAllMocks(); setNew([]) })
   const rowWith = (text: string) => screen.getAllByRole('row').find(r => r.textContent?.includes(text))!
 
-  it('an order from a taxi fleet ALWAYS says «от таксопарка», with no "Новая", even when nothing is new', async () => {
+  it('an order from a taxi fleet ALWAYS shows the taxi icon before the name, no text, even when nothing is new', async () => {
     render(<AppointmentsPage />)
     await waitFor(() => expect(api.getNewAppointments).toHaveBeenCalled())
     const tag = within(rowWith('ТОО Такси')).getByTestId('taxi-tag')
-    expect(tag.textContent).toContain('от таксопарка')
+    expect(tag.textContent).toBe('')   // icon only, no label
+    expect(tag.querySelector('svg')).toBeTruthy()
     expect(within(rowWith('ТОО Такси')).queryByText('Новая')).not.toBeInTheDocument()
     expect(within(rowWith('ТОО Такси')).queryByTestId('taxi-tag-dot')).not.toBeInTheDocument()   // nothing new → no dot
     // regular orders carry no such tag
@@ -197,15 +198,15 @@ describe('order lists: taxi fleet tag and hover colour', () => {
     expect(within(rowWith('Айгерим с сайта')).queryByTestId('taxi-tag')).not.toBeInTheDocument()
   })
 
-  it('a still-unseen taxi fleet order keeps the same tag and only gets a small pulsing dot (no word "Новая")', async () => {
+  it('a still-unseen taxi fleet order keeps the same icon and only gets a small pulsing dot (no word "Новая")', async () => {
     setNew([item('5', 'telegram')])
     render(<AppointmentsPage />)
     await waitFor(() => expect(within(rowWith('ТОО Такси')).getByTestId('taxi-tag-dot')).toBeInTheDocument())
-    expect(within(rowWith('ТОО Такси')).getByTestId('taxi-tag').textContent).toBe('от таксопарка')
+    expect(within(rowWith('ТОО Такси')).getByTestId('taxi-tag').textContent).toBe('')
     expect(within(rowWith('ТОО Такси')).queryByText('Новая')).not.toBeInTheDocument()
     await waitFor(() => expect(api.markAppointmentsSeen).toHaveBeenCalled())
-    // the desktop table and the phone cards show the same tag
-    expect(screen.getAllByText('от таксопарка').length).toBeGreaterThanOrEqual(2)
+    // the desktop table and the phone cards show the same icon
+    expect(screen.getAllByTestId('taxi-tag').length).toBeGreaterThanOrEqual(2)
   })
 
   it('a fresh booking from the site is marked «Новая · с сайта»; an old one is not', async () => {

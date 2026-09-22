@@ -29,13 +29,13 @@ describe('ActionDialog', () => {
     expect(onCancel).toHaveBeenCalled()
   })
 
-  it('closes on Escape and on a click outside the dialog', () => {
+  it('closes on Escape, but NOT on a misclick outside the dialog (only the × / Cancel button do)', () => {
     const onCancel = vi.fn()
     const { container } = render(<ActionDialog {...base} onConfirm={() => {}} onCancel={onCancel} />)
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onCancel).toHaveBeenCalledTimes(1)
-    fireEvent.click(container.firstChild as Element)   // the backdrop
-    expect(onCancel).toHaveBeenCalledTimes(2)
+    fireEvent.click(container.firstChild as Element)   // the backdrop — must not close the dialog
+    expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
   it('passes the trimmed comment of the textarea variant to onConfirm', async () => {

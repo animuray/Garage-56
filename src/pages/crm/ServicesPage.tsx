@@ -56,8 +56,8 @@ function ServiceModal({ initial, onSave, onClose }: ModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-lg p-6">
         <h2 className="text-white font-semibold text-lg mb-5">{initial.name ? 'Редактировать услугу' : 'Новая услуга'}</h2>
         <div className="space-y-4">
           <div>

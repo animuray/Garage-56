@@ -73,10 +73,8 @@ export function ActionDialog({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-[2px] flex items-center justify-center z-[200] p-4"
-      onClick={() => { if (!busy) onCancel() }}>
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl w-full max-w-md shadow-2xl shadow-black/60"
-        onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-[2px] flex items-center justify-center z-[200] p-4">
+      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl w-full max-w-md shadow-2xl shadow-black/60">
         <div className="flex items-start gap-3.5 px-5 pt-5">
           <div className={`w-11 h-11 rounded-xl border flex items-center justify-center shrink-0 ${TONE[tone].tile}`}>{icon}</div>
           <div className="flex-1 min-w-0 pt-0.5">
