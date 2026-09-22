@@ -640,11 +640,14 @@ async function showServices(ctx) {
   const d = bookDraft(ctx); if (!d) return expired(ctx)
   if (!d.svcList) d.svcList = (await data.listServices()).map(s => s.name)
   if (!d.svcList.length) return askComment(ctx) // no services configured: describe the work in the comment
+  // the checklist itself is inline buttons in the chat (like dates/times); the bottom panel keeps only the actions
+  const list = new InlineKeyboard()
+  d.svcList.forEach((name, i) => list.text(`${d.services.includes(i) ? '✅' : '⬜️'} ${name}`, `bk|svc|${i}`).row())
   const kb = new InlineKeyboard()
-  d.svcList.forEach((name, i) => kb.text(`${d.services.includes(i) ? '☑' : '☐'} ${name}`, `bk|svc|${i}`).row())
-  kb.text(d.services.length ? `Далее ▶️ (${d.services.length})` : 'Выберите хотя бы одну работу', d.services.length ? 'bk|svcdone' : 'noop').row()
+    .text(d.services.length ? `Далее ▶️ (${d.services.length})` : 'Выберите хотя бы одну работу', d.services.length ? 'bk|svcdone' : 'noop').row()
     .text('◀️ Другое время', `bk|day|${d.date}`)
-  await show(ctx, bookHead(d, 3, 'услуги') + '🔧 <b>Выберите необходимые работы</b>\n<i>Отметьте нужные — можно несколько</i>', kb)
+  await show(ctx, bookHead(d, 3, 'услуги') + '🔧 <b>Выберите необходимые работы</b>\n<i>Отметьте нужные — можно несколько</i>', kb,
+  { inline: { text: '👇 <b>Работы</b>', kb: list } })
 }
 
 async function askOil(ctx) {
