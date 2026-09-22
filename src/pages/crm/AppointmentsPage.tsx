@@ -459,13 +459,13 @@ export default function AppointmentsPage() {
                                
                               >
                                 <button type="button"
-                                  onClick={() => { updateAppointment(apt.id, { masterId: undefined }); setMasterOpenId(null) }}
+                                  onClick={e => { e.stopPropagation(); updateAppointment(apt.id, { masterId: undefined }); setMasterOpenId(null) }}
                                   className="text-left px-3 py-2 text-xs text-gray-500 hover:bg-[#222] hover:text-white transition-colors whitespace-nowrap w-full">
                                   — Не назначен —
                                 </button>
                                 {masters.map(m => (
                                   <button key={m.id} type="button"
-                                    onClick={() => { updateAppointment(apt.id, { masterId: m.id }); setMasterOpenId(null) }}
+                                    onClick={e => { e.stopPropagation(); updateAppointment(apt.id, { masterId: m.id }); setMasterOpenId(null) }}
                                     className={`text-left px-3 py-2 text-xs transition-colors whitespace-nowrap w-full ${
                                       apt.masterId === m.id ? 'bg-orange-500/20 text-orange-400' : 'text-gray-300 hover:bg-[#222] hover:text-white'
                                     }`}>
