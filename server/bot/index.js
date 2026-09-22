@@ -640,17 +640,16 @@ async function showServices(ctx, warn) {
   const d = bookDraft(ctx); if (!d) return expired(ctx)
   if (!d.svcList) d.svcList = (await data.listServices()).map(s => s.name)
   if (!d.svcList.length) return askComment(ctx) // no services configured: describe the work in the comment
-  // the checklist itself is inline buttons in the chat (like dates/times); the bottom panel keeps only the
-  // actions, and its two buttons never change label/action while ticking boxes — only the checklist above
-  // does — so `show` can edit both messages in place instead of resending the whole screen on every tap
-  // (a static bottom keyboard was the point: it keeps the tick/untick flicker-free).
+  // Ticking a service does NOT edit this message (Telegram briefly flashes any message it edits,
+  // which read as flicker) — it just answers with a small toast instead, see the callback_query
+  // handler below. So the checklist doesn't carry a live ✅/⬜️ state; the full picked list shows up
+  // on the next "Проверьте запись" step.
   const list = new InlineKeyboard()
-  d.svcList.forEach((name, i) => list.text(`${d.services.includes(i) ? '✅' : '⬜️'} ${name}`, `bk|svc|${i}`).row())
+  d.svcList.forEach((name, i) => list.text(name, `bk|svc|${i}`).row())
   const kb = new InlineKeyboard().text('Далее ▶️', 'bk|svcdone').row().text('◀️ Другое время', `bk|day|${d.date}`)
-  const count = d.services.length ? ` · выбрано ${d.services.length}` : ''
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') +
-    bookHead(d, 3, 'услуги') + '🔧 <b>Выберите необходимые работы</b>\n<i>Отметьте нужные — можно несколько</i>', kb,
-  { inline: { text: `👇 <b>Работы</b>${count}`, kb: list } })
+    bookHead(d, 3, 'услуги') + '🔧 <b>Выберите необходимые работы</b>\n<i>Тапайте нужные — подтверждение придёт всплывающей подсказкой. Можно несколько.</i>', kb,
+  { inline: { text: '👇 <b>Работы</b>', kb: list } })
 }
 
 async function askOil(ctx) {
@@ -907,8 +906,11 @@ async function route(ctx, cb) {
       if (b === 'svc') {
         const i = parseInt(c, 10)
         if (!(i >= 0 && i < (dr.svcList || []).length)) return
-        dr.services = dr.services.includes(i) ? dr.services.filter(x => x !== i) : [...dr.services, i]
-        return showServices(ctx)
+        const name = dr.svcList[i]
+        const wasPicked = dr.services.includes(i)
+        dr.services = wasPicked ? dr.services.filter(x => x !== i) : [...dr.services, i]
+        // A toast, not a message edit — the whole point is to leave the checklist untouched
+        return ctx.answerCallbackQuery({ text: `${wasPicked ? '➖ Убрано' : '✅ Добавлено'}: ${name}` }).catch(() => {})
       }
       if (b === 'svcdone') {
         if (!dr.services.length) return showServices(ctx, 'Выберите хотя бы одну работу')
@@ -1104,7 +1106,9 @@ function buildBot(token) {
   })
 
   b.on('callback_query:data', async (ctx) => {
-    await ctx.answerCallbackQuery().catch(() => {})
+    // the service checklist answers its own callback with a toast (see `route`, action 'svc') so it
+    // can say what was picked; everything else just gets the default silent ack
+    if (!ctx.callbackQuery.data.startsWith('bk|svc|')) await ctx.answerCallbackQuery().catch(() => {})
     await route(ctx, ctx.callbackQuery.data)
   })
 
