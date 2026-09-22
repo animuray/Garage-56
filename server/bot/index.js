@@ -636,18 +636,21 @@ async function showTimes(ctx, date, warn) {
   { inline: { text: `👇 <b>Свободное время · ${longDate(date)}</b>`, kb: list } })
 }
 
-async function showServices(ctx) {
+async function showServices(ctx, warn) {
   const d = bookDraft(ctx); if (!d) return expired(ctx)
   if (!d.svcList) d.svcList = (await data.listServices()).map(s => s.name)
   if (!d.svcList.length) return askComment(ctx) // no services configured: describe the work in the comment
-  // the checklist itself is inline buttons in the chat (like dates/times); the bottom panel keeps only the actions
+  // the checklist itself is inline buttons in the chat (like dates/times); the bottom panel keeps only the
+  // actions, and its two buttons never change label/action while ticking boxes — only the checklist above
+  // does — so `show` can edit both messages in place instead of resending the whole screen on every tap
+  // (a static bottom keyboard was the point: it keeps the tick/untick flicker-free).
   const list = new InlineKeyboard()
   d.svcList.forEach((name, i) => list.text(`${d.services.includes(i) ? '✅' : '⬜️'} ${name}`, `bk|svc|${i}`).row())
-  const kb = new InlineKeyboard()
-    .text(d.services.length ? `Далее ▶️ (${d.services.length})` : 'Выберите хотя бы одну работу', d.services.length ? 'bk|svcdone' : 'noop').row()
-    .text('◀️ Другое время', `bk|day|${d.date}`)
-  await show(ctx, bookHead(d, 3, 'услуги') + '🔧 <b>Выберите необходимые работы</b>\n<i>Отметьте нужные — можно несколько</i>', kb,
-  { inline: { text: '👇 <b>Работы</b>', kb: list } })
+  const kb = new InlineKeyboard().text('Далее ▶️', 'bk|svcdone').row().text('◀️ Другое время', `bk|day|${d.date}`)
+  const count = d.services.length ? ` · выбрано ${d.services.length}` : ''
+  await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') +
+    bookHead(d, 3, 'услуги') + '🔧 <b>Выберите необходимые работы</b>\n<i>Отметьте нужные — можно несколько</i>', kb,
+  { inline: { text: `👇 <b>Работы</b>${count}`, kb: list } })
 }
 
 async function askOil(ctx) {
@@ -908,7 +911,7 @@ async function route(ctx, cb) {
         return showServices(ctx)
       }
       if (b === 'svcdone') {
-        if (!dr.services.length) return
+        if (!dr.services.length) return showServices(ctx, 'Выберите хотя бы одну работу')
         dr.services.sort((x, y) => x - y)
         return dr.services.some(i => isOilService(dr.svcList[i])) ? askOil(ctx) : askComment(ctx)
       }
