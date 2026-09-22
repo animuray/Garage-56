@@ -369,7 +369,7 @@ async function showHistory(ctx, carId, offset) {
       : [h.oil_filter, h.air_filter, h.cabin_filter, h.fuel_filter].filter(Boolean)
     const otherNames = items.filter(it => it.category && it.category !== 'oil' && it.category !== 'filter').map(it => it.name)
     return [
-      `📅 <b>${fmtDate(h.date)}</b> · ${fmtInt(h.mileage)} км`,
+      `🗓 <b>${fmtDate(h.date)}</b> · ${fmtInt(h.mileage)} км`,
       (h.services || []).length ? `🔧 ${esc(h.services.join(', '))}` : null,
       oil,
       filterNames.length ? `🔩 Фильтры: ${esc(filterNames.join(', '))}` : null,
@@ -709,7 +709,7 @@ async function confirmBooking(ctx) {
     new InlineKeyboard().text('📋 Мои записи', 'apts').row().text('◀️ Меню', 'menu'))
 }
 
-const APT_PAGE = 5
+const APT_PAGE = 4   // same page size as the service history, so a screen never turns into a wall of text
 
 /** Status as the client should see it. In-work orders always show who is doing the job. */
 function statusLine(a) {
@@ -730,12 +730,17 @@ async function showAppointments(ctx, tab = 'active', offset = 0) {
   const kb = new InlineKeyboard()
     .text(`${tab === 'active' ? '• ' : ''}Активные`, 'apts|active|0')
     .text(`${tab === 'done' ? '• ' : ''}Завершённые`, 'apts|done|0').row()
+  const today = data.todayISO()
   const cards = rows.map(a => {
     if (a.status === 'pending' || a.status === 'confirmed') {
       kb.text(`❌ Отменить ${fmtDate(a.date).slice(0, 5)} ${hm(a.time)} · ${a.license_plate}`, `apt|cancel|${a.id}`).row()
     }
+    // Active tab: flag today/tomorrow so it doesn't get lost among later dates
+    const dayTag = tab === 'active'
+      ? (a.date === today ? ' · 🔥 <b>Сегодня</b>' : a.date === addDays(today, 1) ? ' · Завтра' : '')
+      : ''
     const when = tab === 'done' ? fmtDate(a.date) : `${fmtDate(a.date)} · ${hm(a.time)}`
-    return `🗓 <b>${when}</b>\n🚗 ${esc(a.car_make)} ${esc(a.car_model)} · <code>${esc(a.license_plate)}</code>\n` +
+    return `🗓 <b>${when}</b>${dayTag}\n🚗 ${esc(a.car_make)} ${esc(a.car_model)} · <code>${esc(a.license_plate)}</code>\n` +
       `🔧 ${esc((a.services || []).join(', ') || '—')}\n${statusLine(a)}`
   })
   const pages = Math.max(1, Math.ceil(total / APT_PAGE))

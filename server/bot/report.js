@@ -113,6 +113,8 @@ function summaryText(rep, esc) {
     LINE,
     ...(t.oilCost > 0 ? [`🔧 Работы: <b>${fmtInt(t.worksCost)} ₸</b>`, `🛢 Масло: <b>${fmtInt(t.oilCost)} ₸</b>`] : []),
     `💰 <b>Итого: ${fmtInt(t.total)} ₸</b>`,
+    LINE,
+    '<i>Garage 56</i>',
   ].join('\n')
 }
 
