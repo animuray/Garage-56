@@ -725,38 +725,50 @@ async function confirmBooking(ctx) {
 
 const APT_PAGE = 4   // same page size as the service history, so a screen never turns into a wall of text
 
-/** Status as the client should see it. In-work orders always show who is doing the job. */
+// Three tabs, one status meaning per tab — no need to branch on every status inside a card any more:
+//  'pending' — awaiting the admin's confirmation (the only stage the client can still cancel)
+//  'active'  — confirmed; either waiting for its scheduled time or already in work
+//  'done'    — completed
+const APT_TABS = {
+  pending: { label: '⏳ В ожидании', tag: 'в ожидании', empty: 'Нет заявок, ожидающих подтверждения.' },
+  active: { label: '🔧 Активные', tag: 'активные', empty: 'Нет подтверждённых записей.' },
+  done: { label: '🏁 Завершённые', tag: 'завершённые', empty: 'Завершённых работ пока нет.' },
+}
+
+/** Status as the client should see it — one line, in the tone that fits the tab it's already filtered into. */
 function statusLine(a) {
-  const master = a.master_name ? esc(a.master_name) : null
+  const master = a.master_name ? `👨‍🔧 Мастер: <b>${esc(a.master_name)}</b>` : null
   switch (a.status) {
-    case 'pending': return '⏳ <b>Ожидает подтверждения</b>'
-    case 'confirmed': return '✅ <b>Подтверждена</b>' + (master ? ` · 👨‍🔧 Мастер: <b>${master}</b>` : '')
-    case 'in_progress': return '🔧 <b>В работе</b> · ' + (master ? `👨‍🔧 Мастер: <b>${master}</b>` : 'мастер назначается')
+    case 'pending':
+      return '⏳ <b>Ожидает подтверждения</b>\n<i>Garage 56 свяжется и подтвердит запись</i>'
+    case 'confirmed':
+      return '🕐 <b>Подтверждена</b> · ждёт своего времени' + (master ? `\n${master}` : '')
+    case 'in_progress':
+      return '🔧 <b>Автомобиль в работе</b>' + (master ? `\n${master}` : '\n<i>мастер назначается</i>')
     case 'completed':
-      return '✅ <b>Выполнено</b>' + (master ? ` · 👨‍🔧 ${master}` : '') + (Number(a.total) ? ` · 💰 <b>${fmtInt(a.total)} ₸</b>` : '')
+      return '✅ <b>Выполнено</b>' + (master ? ` · ${master}` : '') + (Number(a.total) ? `\n💰 Стоимость: <b>${fmtInt(a.total)} ₸</b>` : '')
     default: return a.status
   }
 }
 
-async function showAppointments(ctx, tab = 'active', offset = 0) {
-  if (tab !== 'done') tab = 'active'
+async function showAppointments(ctx, tab = 'pending', offset = 0) {
+  if (!APT_TABS[tab]) tab = 'pending'
   const { rows, total } = await data.listAppointments(ctx.org.corporate_id, tab, offset, APT_PAGE)
   // the bottom panel is small on phones — keep it to just the tab switch + Меню, a fixed height that
   // never grows with the number of appointments
   const kb = new InlineKeyboard()
-    .text(`${tab === 'active' ? '• ' : ''}Активные`, 'apts|active|0')
-    .text(`${tab === 'done' ? '• ' : ''}Завершённые`, 'apts|done|0')
+  for (const [key, t] of Object.entries(APT_TABS)) kb.text(`${tab === key ? '• ' : ''}${t.label}`, `apts|${key}|0`)
   menuBtn(kb)
   const today = data.todayISO()
   // cards + their "Отменить"/pager buttons live in the chat as an inline list (like the car list,
   // dates, times…) instead of the bottom panel, so the panel doesn't balloon with one row per record
   const list = new InlineKeyboard()
   const cards = rows.map(a => {
-    if (a.status === 'pending' || a.status === 'confirmed') {
+    if (tab === 'pending') {
       list.text(`❌ Отменить ${fmtDate(a.date).slice(0, 5)} ${hm(a.time)} · ${a.license_plate}`, `apt|cancel|${a.id}`).row()
     }
-    // Active tab: flag today/tomorrow so it doesn't get lost among later dates
-    const dayTag = tab === 'active'
+    // flag today/tomorrow on upcoming work so it doesn't get lost among later dates
+    const dayTag = tab !== 'done'
       ? (a.date === today ? ' · 🔥 <b>Сегодня</b>' : a.date === addDays(today, 1) ? ' · Завтра' : '')
       : ''
     const when = tab === 'done' ? fmtDate(a.date) : `${fmtDate(a.date)} · ${hm(a.time)}`
@@ -773,9 +785,8 @@ async function showAppointments(ctx, tab = 'active', offset = 0) {
     list.text(`Страница ${page + 1} из ${pages}`, 'noop')
     list.text('Вперёд ▶️', page < pages - 1 ? `apts|${tab}|${offset + APT_PAGE}` : 'noop')
   }
-  const empty = tab === 'done' ? 'Завершённых работ пока нет.' : 'Активных записей нет.'
   await show(ctx,
-    head('📋', 'Мои записи', `${tab === 'done' ? 'завершённые' : 'активные'} · ${total}`) + (cards.length ? '' : `\n${empty}`),
+    head('📋', 'Мои записи', `${APT_TABS[tab].tag} · ${total}`) + (cards.length ? '' : `\n${APT_TABS[tab].empty}`),
     kb, { inline: cards.length ? { text: cards.join('\n'), kb: list } : null })
 }
 

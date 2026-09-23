@@ -297,15 +297,16 @@ async function createAppointment(org, car, a) {
 }
 
 /**
- * tab 'active': waiting / confirmed / in work (in-work orders stay visible even if their date has passed)
- * tab 'done':   completed, newest first
+ * tab 'pending': not yet confirmed by the admin — the only stage the client can still cancel from the bot
+ * tab 'active':  confirmed / in work (in-work orders stay visible even if their date has passed)
+ * tab 'done':    completed, newest first
  */
 async function listAppointments(corporateId, tab, offset = 0, limit = 5) {
-  const cond = tab === 'done'
-    ? `a.status = 'completed'`
-    : `a.status IN ${ACTIVE_STATUSES} AND (a.date >= $2::date OR a.status = 'in_progress')`
+  const cond = tab === 'done' ? `a.status = 'completed'`
+    : tab === 'pending' ? `a.status = 'pending'`
+    : `a.status IN ('confirmed','in_progress') AND (a.date >= $2::date OR a.status = 'in_progress')`
   const order = tab === 'done' ? 'a.date DESC, a.time DESC, a.id DESC' : 'a.date, a.time, a.id'
-  const vals = tab === 'done' ? [corporateId] : [corporateId, todayISO()]
+  const vals = tab === 'done' || tab === 'pending' ? [corporateId] : [corporateId, todayISO()]
   const where = `${OWN('a', '$1')} AND ${cond}`
   const { rows: [{ count }] } = await pool.query(`SELECT COUNT(*) FROM appointments a WHERE ${where}`, vals)
   const { rows } = await pool.query(`
@@ -316,10 +317,12 @@ async function listAppointments(corporateId, tab, offset = 0, limit = 5) {
   return { rows, total: +count }
 }
 
+// Once the admin confirms the appointment, the client no longer cancels it from the bot themselves —
+// only while it's still pending (call Garage 56 after that).
 async function cancelAppointment(corporateId, id) {
   const { rows } = await pool.query(`
     UPDATE appointments a SET status = 'cancelled', cancel_reason = 'Отменено клиентом через Telegram'
-    WHERE a.id = $2 AND ${OWN('a', '$1')} AND a.status IN ('pending','confirmed')
+    WHERE a.id = $2 AND ${OWN('a', '$1')} AND a.status = 'pending'
     RETURNING a.id, a.date, a.time, a.car_make, a.car_model, a.license_plate`, [corporateId, id])
   return rows[0] || null
 }
