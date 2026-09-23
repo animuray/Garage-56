@@ -964,7 +964,8 @@ async function route(ctx, cb) {
     case 'apt':
       if (b === 'cancel') {
         return show(ctx, head('❓', 'Отменить запись?') + '\nЗапись будет отменена, время освободится.',
-          new InlineKeyboard().text('↩️ Нет', 'apts').text('❌ Да, отменить', `apt|cancelok|${c}`).row().text('◀️ Назад', 'apts'))
+          new InlineKeyboard().text('🔙 Нет', 'apts').text('✅ Да, отменить', `apt|cancelok|${c}`),
+          { home: true })
       }
       if (b === 'cancelok') {
         const r = await data.cancelAppointment(corp, parseInt(c, 10))
@@ -1125,10 +1126,9 @@ async function askPeriod(ctx, warn) {
     .text('📅 Последние 7 дней', 'rep|last7').text('📅 Последние 30 дней', 'rep|last30').row()
     .text('📦 Этот квартал', 'rep|q').text('📦 Прошлый квартал', 'rep|qprev').row()
     .text('◀️ Назад', 'rep')
-  menuBtn(kb)
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + head('🗓', 'Свой период') +
     '\n<b>Быстрый выбор</b> — кнопкой ниже, или введите свои даты через дефис:\n<code>01.08.2026-31.08.2026</code>',
-    kb, { placeholder: '01.08.2026-31.08.2026' })
+    kb, { placeholder: '01.08.2026-31.08.2026', home: true })
 }
 
 // ─── Notifications (called by the API when the CRM changes an appointment) ───
