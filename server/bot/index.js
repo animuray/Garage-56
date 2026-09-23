@@ -632,7 +632,7 @@ async function showCalendar(ctx, page = 0, warn) {
     list.text(`${page + 1} / ${pages}`, 'noop')
     list.text('Позже ▶️', page < pages - 1 ? `bk|cal|${page + 1}` : 'noop')
   }
-  const kb = new InlineKeyboard().text('🔄 Другой автомобиль', 'cl|book|0').row().text('❌ Отмена', 'menu')
+  const kb = new InlineKeyboard().text('🔄 Другой автомобиль', 'cl|book|0').text('❌ Отмена', 'menu')
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + bookHead(d, 1, 'дата') +
     `🗓 <b>Выберите дату</b>\n<i>Показаны только свободные дни на ближайшие ${st.daysAhead} дн.</i>`, kb,
   { inline: { text: '👇 <b>Свободные даты</b>', kb: list } })
@@ -647,7 +647,7 @@ async function showTimes(ctx, date, warn) {
   d.date = date; d.time = null
   const list = new InlineKeyboard()
   free.forEach((t, i) => { list.text(t, `bk|time|${t}`); if (i % 4 === 3 && i < free.length - 1) list.row() })
-  const kb = new InlineKeyboard().text('🗓 Другая дата', `bk|cal|${d.calPage || 0}`).row().text('🏠 Меню', 'menu')
+  const kb = new InlineKeyboard().text('🗓 Другая дата', `bk|cal|${d.calPage || 0}`).text('🏠 Меню', 'menu')
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + bookHead(d, 2, 'время') +
     '🕐 <b>Выберите время</b>\n<i>Только свободные окошки</i>', kb,
   { inline: { text: `👇 <b>Свободное время · ${longDate(date)}</b>`, kb: list } })
