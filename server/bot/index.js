@@ -767,7 +767,6 @@ async function showAppointments(ctx, tab = 'active', offset = 0) {
     kb.text('Вперёд ▶️', page < pages - 1 ? `apts|${tab}|${offset + APT_PAGE}` : 'noop')
     kb.row()
   }
-  kb.text('📅 Новая запись', 'book')
   menuBtn(kb)
   const empty = tab === 'done' ? 'Завершённых работ пока нет.' : 'Активных записей нет.'
   await show(ctx,
@@ -955,6 +954,19 @@ async function route(ctx, cb) {
       }
       if (b === 'yr' && /^\d{4}$/.test(c)) return showReport(ctx, `${c}-01-01`, `${c}-12-31`)
       if (b === 'custom') return askPeriod(ctx)
+      if (b === 'last7' || b === 'last30') {
+        const today = data.todayISO()
+        return showReport(ctx, addDays(today, b === 'last7' ? -6 : -29), today)
+      }
+      if (b === 'q' || b === 'qprev') {
+        const today = data.todayISO()
+        const [yy, mm] = today.split('-').map(Number)
+        let qy = yy, qi = Math.floor((mm - 1) / 3)
+        if (b === 'qprev') { qi--; if (qi < 0) { qi = 3; qy-- } }
+        const startM = qi * 3 + 1, endM = qi * 3 + 3
+        const to = b === 'q' ? today : `${qy}-${pad2(endM)}-${pad2(lastDayOfMonth(qy, endM))}`
+        return showReport(ctx, `${qy}-${pad2(startM)}-01`, to)
+      }
       if ((b === 'pdf' || b === 'xls') && ISO_RE.test(c) && ISO_RE.test(d)) return sendReportFile(ctx, b, c, d)
       return
     }
@@ -1023,9 +1035,14 @@ async function handleText(ctx) {
 
 async function askPeriod(ctx, warn) {
   sess(ctx).mode = 'period'
+  const kb = new InlineKeyboard()
+    .text('📅 Последние 7 дней', 'rep|last7').text('📅 Последние 30 дней', 'rep|last30').row()
+    .text('📦 Этот квартал', 'rep|q').text('📦 Прошлый квартал', 'rep|qprev').row()
+    .text('◀️ Назад', 'rep')
+  menuBtn(kb)
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + head('🗓', 'Свой период') +
-    '\nВведите даты через дефис:\n<code>01.08.2026-31.08.2026</code>',
-    menuBtn(new InlineKeyboard().text('◀️ Назад', 'rep')), { placeholder: '01.08.2026-31.08.2026' })
+    '\n<b>Быстрый выбор</b> — кнопкой ниже, или введите свои даты через дефис:\n<code>01.08.2026-31.08.2026</code>',
+    kb, { placeholder: '01.08.2026-31.08.2026' })
 }
 
 // ─── Notifications (called by the API when the CRM changes an appointment) ───
