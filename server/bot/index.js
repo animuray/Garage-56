@@ -245,9 +245,10 @@ async function showCarList(ctx, mode, offset = 0) {
   const [icon, title, hint] = CL_TITLE[mode]
 
   // actions: bottom keyboard — main actions together on top, Меню always its own row at the bottom
-  const kb = new InlineKeyboard().text('🔍 Найти автомобиль', `find|${mode}`)
-  if (s.q) kb.text('✖️ Сбросить поиск', `clr|${mode}`)
+  const kb = new InlineKeyboard()
   if (mode !== 'tb') kb.text('➕ Добавить автомобиль', `car|add|${mode}`)
+  kb.text('🔍 Найти автомобиль', `find|${mode}`)
+  if (s.q) kb.text('✖️ Сбросить поиск', `clr|${mode}`)
   menuBtn(kb)
 
   let text = head(icon, title) + `\nВсего автомобилей: <b>${total}</b>`
@@ -292,9 +293,8 @@ async function showCar(ctx, carId) {
   ].filter(l => l !== null)
   const kb = new InlineKeyboard()
     .text('📖 История обслуживания', `hist|${car.id}|0`).row()
-    .text('📅 Записать на ТО', `bk|car|${car.id}`)
-  if (!delReq) kb.text('🗑 Запросить удаление', `cdr|ask|${car.id}`)
-  kb.row().text('◀️ К списку', 'cl|cars|0')
+    .text('📅 Записать на ТО', `bk|car|${car.id}`).text('🚗 К списку', 'cl|cars|0')
+  if (!delReq) kb.row().text('🗑 Запросить удаление', `cdr|ask|${car.id}`)
   menuBtn(kb)
   await show(ctx, lines.join('\n'), kb)
 }
@@ -647,7 +647,7 @@ async function showTimes(ctx, date, warn) {
   d.date = date; d.time = null
   const list = new InlineKeyboard()
   free.forEach((t, i) => { list.text(t, `bk|time|${t}`); if (i % 4 === 3 && i < free.length - 1) list.row() })
-  const kb = new InlineKeyboard().text('🗓 Другая дата', `bk|cal|${d.calPage || 0}`).text('◀️ Меню', 'menu')
+  const kb = new InlineKeyboard().text('🗓 Другая дата', `bk|cal|${d.calPage || 0}`).row().text('◀️ Меню', 'menu')
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + bookHead(d, 2, 'время') +
     '🕐 <b>Выберите время</b>\n<i>Только свободные окошки</i>', kb,
   { inline: { text: `👇 <b>Свободное время · ${longDate(date)}</b>`, kb: list } })
