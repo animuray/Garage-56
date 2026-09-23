@@ -810,8 +810,8 @@ async function askCancelRequestReason(ctx, appointmentId, warn) {
     `\n🗓 <b>${weekday(a.date)}, ${longDate(a.date)} · ${hm(a.time)}</b>\n\n` +
     'Запись уже подтверждена — отменить её может только администратор Garage 56, вы отправляете ему запрос.\n\n' +
     '✍️ <b>Обязательно укажите причину отмены</b> — без неё запрос не отправить.',
-    new InlineKeyboard().text('◀️ Отмена', 'apts|active|0'),
-    { placeholder: 'Причина отмены' })
+    new InlineKeyboard().text('◀️ Назад', 'apts|active|0'),
+    { placeholder: 'Причина отмены', home: true })
 }
 
 async function confirmCancelRequest(ctx) {
@@ -826,7 +826,8 @@ async function confirmCancelRequest(ctx) {
     `🗓 <b>${weekday(a.date)}, ${longDate(a.date)} · ${hm(a.time)}</b>\n` +
     `📝 Причина: <i>«${esc(d.reason)}»</i>\n\n` +
     '<i>До решения администратора запись остаётся в силе. Мы пришлём уведомление, когда запрос будет рассмотрен.</i>',
-    new InlineKeyboard().text('✅ Отправить запрос', 'acr|send').text('❌ Отмена', 'apts|active|0'))
+    new InlineKeyboard().text('❌ Отмена', 'apts|active|0').text('✅ Отправить запрос', 'acr|send'),
+    { home: true })
 }
 
 async function sendCancelRequest(ctx) {
