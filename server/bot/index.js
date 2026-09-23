@@ -618,9 +618,9 @@ async function showCalendar(ctx, page = 0, warn) {
   d.calPage = page
   const back = new InlineKeyboard()
   if (!dates.length) {
-    menuBtn(back.text('◀️ Назад', 'cl|book|0'))
+    back.text('◀️ Назад', 'cl|book|0')
     return show(ctx, bookHead(d, 1, 'дата') + '😔 <b>Свободных дат сейчас нет.</b>\n' +
-      `Позвоните нам${st.phone ? `: <b>${esc(st.phone)}</b>` : ''} — подберём время вручную.`, back)
+      `Позвоните нам${st.phone ? `: <b>${esc(st.phone)}</b>` : ''} — подберём время вручную.`, back, { home: true })
   }
   const pages = Math.ceil(dates.length / DATES_PER_PAGE)
   page = Math.min(Math.max(0, page), pages - 1); d.calPage = page
@@ -639,7 +639,7 @@ async function showCalendar(ctx, page = 0, warn) {
   const kb = new InlineKeyboard().text('◀️ Назад', 'cl|book|0')
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + bookHead(d, 1, 'дата') +
     `🗓 <b>Выберите дату</b>\n<i>Показаны только свободные дни на ближайшие ${st.daysAhead} дн.</i>`, kb,
-  { inline: { text: '👇 <b>Свободные даты</b>', kb: list } })
+  { inline: { text: '👇 <b>Свободные даты</b>', kb: list }, home: true })
 }
 
 async function showTimes(ctx, date, warn) {
@@ -654,7 +654,7 @@ async function showTimes(ctx, date, warn) {
   const kb = new InlineKeyboard().text('◀️ Назад', `bk|cal|${d.calPage || 0}`)
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + bookHead(d, 2, 'время') +
     '🕐 <b>Выберите время</b>\n<i>Только свободные окошки</i>', kb,
-  { inline: { text: `👇 <b>Свободное время · ${longDate(date)}</b>`, kb: list } })
+  { inline: { text: `👇 <b>Свободное время · ${longDate(date)}</b>`, kb: list }, home: true })
 }
 
 async function showServices(ctx, warn) {
