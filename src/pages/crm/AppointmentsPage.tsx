@@ -350,13 +350,18 @@ export default function AppointmentsPage() {
                     ) : (
                       <div className="text-gray-300 text-sm">{master?.name ?? '—'}</div>
                     )}
+                    {canAct && apt.status === 'pending' && !apt.masterId && (
+                      <div className="text-orange-400 text-xs mt-1">Назначьте мастера, чтобы подтвердить запись</div>
+                    )}
                   </div>
 
                   {canAct && (
                     <div className="flex gap-2 pt-1">
                       {apt.status === 'pending' && (
                         <button onClick={() => updateAppointmentStatus(apt.id, 'in_progress')}
-                          className="flex-1 py-2.5 text-sm bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors font-medium">
+                          disabled={!apt.masterId}
+                          title={!apt.masterId ? 'Сначала назначьте мастера' : undefined}
+                          className="flex-1 py-2.5 text-sm bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-500/20">
                           Подтвердить
                         </button>
                       )}
@@ -494,7 +499,9 @@ export default function AppointmentsPage() {
                         {apt.status === 'pending' && (
                           <button
                             onClick={() => updateAppointmentStatus(apt.id, 'in_progress')}
-                            className="px-3 py-1.5 text-xs bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30 transition-colors whitespace-nowrap"
+                            disabled={!apt.masterId}
+                            title={!apt.masterId ? 'Сначала назначьте мастера' : undefined}
+                            className="px-3 py-1.5 text-xs bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-500/20"
                           >
                             Подтвердить
                           </button>

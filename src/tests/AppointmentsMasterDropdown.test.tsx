@@ -7,6 +7,7 @@ import AppointmentsPage from '../pages/crm/AppointmentsPage'
 // React still bubbles its clicks through the component tree, not the DOM tree, so a click on a
 // master name used to also fire the <tr>'s onClick and pop the "Детали записи" modal open.
 const updateAppointment = vi.fn()
+const updateAppointmentStatus = vi.fn()
 
 vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ user: { id: '1', role: 'admin', name: 'Админ' }, logout: vi.fn(), isAuthenticated: true }) }))
 vi.mock('../context/AppContext', () => ({
@@ -14,10 +15,15 @@ vi.mock('../context/AppContext', () => ({
     appointments: [
       { id: '1', date: '2027-02-02', time: '11:00', clientName: 'Иван', clientPhone: '+7700', carMake: 'Toyota', carModel: 'Camry', carYear: 2020,
         licensePlate: '123ABC02', engineType: 'Бензин', engineVolume: 2, mileage: 1, services: ['Масло'], oilPreference: '', status: 'pending', createdAt: '' },
+      { id: '2', date: '2027-02-02', time: '12:00', clientName: 'Гульнара', clientPhone: '+7701', carMake: 'Kia', carModel: 'Rio', carYear: 2021,
+        licensePlate: 'A222AA02', engineType: 'Бензин', engineVolume: 1.6, mileage: 1, services: ['Масло'], oilPreference: '', status: 'pending', createdAt: '', masterId: '10' },
     ],
-    employees: [{ id: '9', name: 'Асан Сейткали', email: 'a@a.kz', role: 'master', isActive: true }],
+    employees: [
+      { id: '9', name: 'Асан Сейткали', email: 'a@a.kz', role: 'master', isActive: true },
+      { id: '10', name: 'Марат Жумабеков', email: 'm@a.kz', role: 'master', isActive: true },
+    ],
     warehouse: [],
-    updateAppointmentStatus: vi.fn(), updateAppointment,
+    updateAppointmentStatus, updateAppointment,
   }),
 }))
 vi.mock('../api', () => ({
@@ -47,5 +53,21 @@ describe('assigning a master from the appointments table', () => {
 
     expect(updateAppointment).toHaveBeenCalledWith('1', { masterId: '9' })
     expect(screen.queryByText('Детали записи')).not.toBeInTheDocument()
+  })
+})
+
+describe('confirming a pending order (Подтвердить)', () => {
+  it('is disabled until a master is assigned', async () => {
+    renderPage()
+    const table = await screen.findByRole('table')
+    const noMaster = within(table).getByText('Иван').closest('tr')!
+    const withMaster = within(table).getByText('Гульнара').closest('tr')!
+
+    const confirmBtn = within(noMaster).getByText('Подтвердить')
+    expect(confirmBtn).toBeDisabled()
+    fireEvent.click(confirmBtn)
+    expect(updateAppointmentStatus).not.toHaveBeenCalled()
+
+    expect(within(withMaster).getByText('Подтвердить')).toBeEnabled()
   })
 })
