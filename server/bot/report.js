@@ -12,6 +12,7 @@ const fmtDate = (iso) => {
 }
 const fmtInt = (n) => Math.round(Number(n) || 0).toLocaleString('ru-RU').replace(/ | /g, ' ')
 const fmtLiters = (n) => Number((Number(n) || 0).toFixed(1)).toString().replace('.', ',')
+const hm = (t) => String(t || '').slice(0, 5)
 
 const has = (s) => Boolean(s && String(s).trim())
 const hasService = (row, re) => (row.services || []).some(s => re.test(s))
@@ -34,29 +35,43 @@ function buildReport(rows, { from, to, company }) {
     // Client-facing reports name the KIND of material only (oil / filters), never brands or part numbers
     const filterCount = filterCountOf(r)
     const otherCount = otherMaterialsCountOf(r)
+    const liters = r.oil_liters != null ? Number(r.oil_liters) : 0
     const materials = [
-      (has(r.oil_brand) || Number(r.oil_liters) > 0) && 'Масло',
+      (has(r.oil_brand) || liters > 0) && 'Масло',
       filterCount > 0 && `Фильтры (${filterCount})`,
       otherCount > 0 && 'Другие материалы',
     ].filter(Boolean)
     return {
       n: i + 1,
       date: fmtDate(r.date),
+      time: hm(r.time),
       plate: r.license_plate,
       car: `${r.car_make} ${r.car_model}`.trim(),
       mileage: r.mileage || 0,
       works: (r.services || []).join(', '),
+      note: (r.service_notes || '').trim(),   // the master's own remarks about the job, if any
       materials: materials.join('; '),
-      liters: r.oil_liters != null ? Number(r.oil_liters) : 0,
+      liters,
       oilCost: Number(r.oil_cost) || 0,
       master: r.master_name || '',
       total: Number(r.total) || 0,
     }
   })
 
-  const cars = new Set(rows.map(r => r.car_id || r.license_plate))
+  const carKey = (r) => r.car_id || r.license_plate
+  const cars = new Set(rows.map(carKey))
   const byService = {}
   rows.forEach(r => (r.services || []).forEach(s => { byService[s] = (byService[s] || 0) + 1 }))
+
+  // Per-car spend for the period — "how much did THIS car cost", not just the fleet total
+  const byCarMap = new Map()
+  rows.forEach(r => {
+    const key = carKey(r)
+    const cur = byCarMap.get(key) || { plate: r.license_plate, car: `${r.car_make} ${r.car_model}`.trim(), orders: 0, total: 0 }
+    cur.orders += 1
+    cur.total += Number(r.total) || 0
+    byCarMap.set(key, cur)
+  })
 
   const totals = {
     orders: rows.length,
@@ -68,6 +83,7 @@ function buildReport(rows, { from, to, company }) {
     total: rows.reduce((s, r) => s + (Number(r.total) || 0), 0),
     oilCost: rows.reduce((s, r) => s + (Number(r.oil_cost) || 0), 0),
     byService: Object.entries(byService).sort((a, b) => b[1] - a[1]),
+    byCar: [...byCarMap.values()].sort((a, b) => b.total - a.total),
   }
   totals.worksCost = totals.total - totals.oilCost   // the order total is services + oil
   return { lines, totals, from, to, company }
@@ -213,6 +229,10 @@ async function buildExcel(rep) {
 }
 
 // ─── PDF ─────────────────────────────────────────────────────────────────────
+// Palette tied to the Garage 56 brand (the same orange as the site/CRM), on top of a plain,
+// print-friendly dark-slate/white table so it stays readable when printed in black & white.
+const PDF_COLORS = { header: '#1F2937', accent: '#EA580C', zebra: '#FFF7ED', totalBg: '#FEF3C7', muted: '#6B7280' }
+
 function buildPdf(rep) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 30 })
@@ -223,89 +243,163 @@ function buildPdf(rep) {
 
     doc.registerFont('R', path.join(FONT_DIR, 'DejaVuSans.ttf'))
     doc.registerFont('B', path.join(FONT_DIR, 'DejaVuSans-Bold.ttf'))
+    doc.registerFont('I', path.join(FONT_DIR, 'DejaVuSans-Oblique.ttf'))
 
-    const cols = [
-      { k: 'n', t: '№', w: 24, a: 'center' },
-      { k: 'date', t: 'Дата', w: 56, a: 'left' },
-      { k: 'plate', t: 'Госномер', w: 62, a: 'left' },
-      { k: 'car', t: 'Автомобиль', w: 88, a: 'left' },
-      { k: 'mileage', t: 'Пробег', w: 48, a: 'right' },
-      { k: 'works', t: 'Работы', w: 126, a: 'left' },
-      { k: 'materials', t: 'Масло / фильтры', w: 134, a: 'left' },
-      { k: 'liters', t: 'Масло, л', w: 40, a: 'right' },
-      { k: 'oilCost', t: 'Масло, ₸', w: 50, a: 'right' },
-      { k: 'master', t: 'Мастер', w: 76, a: 'left' },
-      { k: 'total', t: 'Сумма, ₸', w: 62, a: 'right' },
-    ]
     const left = doc.page.margins.left
-    const pad = 3
+    const pad = 4
     const FS = 7.5
 
-    // Brand logo in the bottom-right corner of every page; content stops above it.
+    // Brand logo bottom-right + a small page number bottom-left, on every page; content stops above them.
     const LOGO = path.join(__dirname, 'assets', 'logo.png')
     const LOGO_SIZE = 52
-    const drawLogo = () => doc.image(LOGO,
-      doc.page.width - doc.page.margins.right - LOGO_SIZE,
-      doc.page.height - doc.page.margins.bottom - LOGO_SIZE, { width: LOGO_SIZE })
-    doc.on('pageAdded', drawLogo)
-    drawLogo() // the first page already exists at this point
+    let pageNum = 0
+    const drawPageChrome = () => {
+      pageNum += 1
+      doc.image(LOGO, doc.page.width - doc.page.margins.right - LOGO_SIZE,
+        doc.page.height - doc.page.margins.bottom - LOGO_SIZE, { width: LOGO_SIZE })
+      doc.font('R').fontSize(8).fillColor(PDF_COLORS.muted)
+        .text(`Стр. ${pageNum}`, left, doc.page.height - doc.page.margins.bottom - 12, { width: 100, lineBreak: false })
+      doc.fillColor('#000000')
+    }
+    doc.on('pageAdded', drawPageChrome)
+    drawPageChrome() // the first page already exists at this point
     const bottom = () => doc.page.height - doc.page.margins.bottom - LOGO_SIZE - 8
 
-    const cellText = (l, c) => {
-      const v = l[c.k]
-      if (c.k === 'mileage' || c.k === 'total') return fmtInt(v)
-      if (c.k === 'oilCost') return v ? fmtInt(v) : ''
-      if (c.k === 'liters') return v ? fmtLiters(v) : ''
-      return String(v ?? '')
-    }
-
-    const drawHeader = (y) => {
-      doc.font('B').fontSize(FS)
-      const h = 18
-      doc.rect(left, y, cols.reduce((s, c) => s + c.w, 0), h).fill('#1F2937')
-      let x = left
-      cols.forEach(c => {
-        doc.fillColor('#FFFFFF').text(c.t, x + pad, y + 5, { width: c.w - pad * 2, align: c.a === 'right' ? 'right' : 'left', lineBreak: false })
-        x += c.w
-      })
-      doc.fillColor('#000000')
-      return y + h
-    }
-
-    doc.font('B').fontSize(14).text('Отчёт о выполненных работах — Garage 56', left, 30)
-    doc.font('R').fontSize(10)
-      .text(`Клиент: ${rep.company}`, left, 52)
-      .text(`Период: ${periodTitle(rep.from, rep.to)} (${periodLabel(rep.from, rep.to)})`, left, 66)
-
-    let y = drawHeader(88)
-    doc.font('R').fontSize(FS)
-
-    rep.lines.forEach((l, idx) => {
-      const heights = cols.map(c => doc.heightOfString(cellText(l, c), { width: c.w - pad * 2 }))
-      const rowH = Math.max(...heights) + pad * 2
-      if (y + rowH > bottom()) {
-        doc.addPage()
-        y = drawHeader(doc.page.margins.top)
-        doc.font('R').fontSize(FS)
+    /** Header row + zebra-striped body rows, paginating on its own; returns the y right after the table. */
+    function drawTable({ cols, rows, y, heightOf, drawRow }) {
+      const tw = cols.reduce((s, c) => s + c.w, 0)
+      const headH = 20
+      const drawHead = (yy) => {
+        doc.font('B').fontSize(FS)
+        doc.rect(left, yy, tw, headH).fill(PDF_COLORS.header)
+        let x = left
+        cols.forEach(c => {
+          doc.fillColor('#FFFFFF').text(c.t, x + pad, yy + 6, { width: c.w - pad * 2, align: c.a, lineBreak: false })
+          x += c.w
+        })
+        doc.fillColor('#000000')
+        return yy + headH
       }
-      if (idx % 2) doc.rect(left, y, cols.reduce((s, c) => s + c.w, 0), rowH).fill('#F3F4F6').fillColor('#000000')
-      let x = left
-      cols.forEach(c => {
-        doc.fillColor('#000000').text(cellText(l, c), x + pad, y + pad, { width: c.w - pad * 2, align: c.a })
-        x += c.w
+      let yy = drawHead(y)
+      rows.forEach((r, idx) => {
+        const rowH = heightOf(r) + pad * 2
+        if (yy + rowH > bottom()) { doc.addPage(); yy = drawHead(doc.page.margins.top) }
+        if (idx % 2) { doc.rect(left, yy, tw, rowH).fill(PDF_COLORS.zebra); doc.fillColor('#000000') }
+        drawRow(r, left, yy, rowH)
+        yy += rowH
       })
-      y += rowH
-    })
+      doc.moveTo(left, yy).lineTo(left + tw, yy).lineWidth(0.5).stroke('#D1D5DB')
+      return yy
+    }
 
-    // ─ Totals ─
-    const t = rep.totals
-    const tw = cols.reduce((s, c) => s + c.w, 0)
-    const blockH = 14 * 11 + 20   // a little more than the summary block actually needs — safe margin
-    if (y + blockH > bottom()) { doc.addPage(); y = doc.page.margins.top }
-    doc.moveTo(left, y + 4).lineTo(left + tw, y + 4).lineWidth(1).stroke('#000000')
-    y += 12
-    doc.font('B').fontSize(10).text('ИТОГО', left, y)
+    // ── the main table: one row per completed order ──
+    const cols = [
+      { k: 'n', t: '№', w: 20, a: 'center' },
+      { k: 'when', t: 'Дата/время', w: 62, a: 'left' },
+      { k: 'plate', t: 'Госномер', w: 60, a: 'left' },
+      { k: 'car', t: 'Автомобиль', w: 82, a: 'left' },
+      { k: 'mileage', t: 'Пробег', w: 50, a: 'right' },
+      { k: 'works', t: 'Выполненные работы', w: 222, a: 'left' },
+      { k: 'materials', t: 'Материалы', w: 118, a: 'left' },
+      { k: 'master', t: 'Мастер', w: 76, a: 'left' },
+      { k: 'total', t: 'Стоимость, ₸', w: 70, a: 'right' },
+    ]
+    const worksCol = cols.find(c => c.k === 'works')
+    const whenCol = cols.find(c => c.k === 'when')
+    const SUB_FS = FS - 1
+
+    const materialsText = (l) => {
+      if (!l.materials) return '—'
+      const liters = l.liters ? `${fmtLiters(l.liters)} л` : ''
+      return liters ? l.materials.replace(/^Масло/, `Масло ${liters}`) : l.materials
+    }
+    const cellText = (l, c) => {
+      if (c.k === 'mileage' || c.k === 'total') return fmtInt(l[c.k])
+      if (c.k === 'materials') return materialsText(l)
+      return String(l[c.k] ?? '') || '—'
+    }
+    // Two-line cells (a normal main line + a smaller grey second line): "when" (date, then time below)
+    // and "works" (the services, then the master's own remarks below, if present — those used to not
+    // show up anywhere in the report at all).
+    const twoLineHeight = (w, main, sub) => {
+      let h = doc.font('R').fontSize(FS).heightOfString(main, { width: w - pad * 2 })
+      if (sub) h += 2 + doc.font('R').fontSize(SUB_FS).heightOfString(sub, { width: w - pad * 2 })
+      return h
+    }
+    const drawTwoLine = (x, y, w, main, sub, subFont = 'R') => {
+      doc.font('R').fontSize(FS).fillColor('#000000')
+      doc.text(main, x + pad, y + pad, { width: w - pad * 2 })
+      if (sub) {
+        doc.font(subFont).fontSize(SUB_FS).fillColor(PDF_COLORS.muted)
+        doc.text(sub, x + pad, doc.y + 1, { width: w - pad * 2 })
+        doc.fillColor('#000000')
+      }
+    }
+    const worksHeight = (l) => twoLineHeight(worksCol.w, l.works || '—', l.note)
+    const drawWorks = (x, y, l) => drawTwoLine(x, y, worksCol.w, l.works || '—', l.note, 'I')
+    const whenHeight = (l) => twoLineHeight(whenCol.w, l.date, l.time)
+    const drawWhen = (x, y, l) => drawTwoLine(x, y, whenCol.w, l.date, l.time)
+
+    doc.font('B').fontSize(15).fillColor(PDF_COLORS.header).text('Отчёт о выполненных работах', left, 30, { continued: true })
+    doc.fillColor(PDF_COLORS.accent).text(' — Garage 56')
+    doc.fillColor('#000000')
+    doc.font('R').fontSize(10)
+      .text(`Клиент: ${rep.company}`, left, 53)
+      .text(`Период: ${periodTitle(rep.from, rep.to)} (${periodLabel(rep.from, rep.to)})`, left, 67)
+    doc.rect(left, 84, cols.reduce((s, c) => s + c.w, 0), 2).fill(PDF_COLORS.accent)
+
+    const plainCols = cols.filter(c => c.k !== 'works' && c.k !== 'when')
+    let y = drawTable({
+      cols, rows: rep.lines, y: 92,
+      heightOf: (l) => Math.max(worksHeight(l), whenHeight(l),
+        ...plainCols.map(c => doc.font('R').fontSize(FS).heightOfString(cellText(l, c), { width: c.w - pad * 2 }))),
+      drawRow: (l, rx, ry) => {
+        let x = rx
+        cols.forEach(c => {
+          if (c.k === 'works') { drawWorks(x, ry, l); x += c.w; return }
+          if (c.k === 'when') { drawWhen(x, ry, l); x += c.w; return }
+          doc.font('R').fontSize(FS).fillColor('#000000')
+            .text(cellText(l, c), x + pad, ry + pad, { width: c.w - pad * 2, align: c.a })
+          x += c.w
+        })
+      },
+    })
     y += 16
+
+    // ── "how much did THIS car cost" — the fleet-wide totals below only answer it in aggregate ──
+    const t = rep.totals
+    if (t.byCar.length > 1) {
+      if (y + 30 > bottom()) { doc.addPage(); y = doc.page.margins.top }
+      doc.font('B').fontSize(11).fillColor(PDF_COLORS.header).text('Итого по автомобилям', left, y)
+      doc.fillColor('#000000')
+      y += 18
+      const carCols = [
+        { k: 'car', t: 'Автомобиль', w: 220, a: 'left' },
+        { k: 'plate', t: 'Госномер', w: 100, a: 'left' },
+        { k: 'orders', t: 'Заказов', w: 80, a: 'right' },
+        { k: 'total', t: 'Стоимость, ₸', w: 100, a: 'right' },
+      ]
+      y = drawTable({
+        cols: carCols, rows: t.byCar, y,
+        heightOf: () => doc.font('R').fontSize(FS).heightOfString('Ay', {}),
+        drawRow: (r, rx, ry) => {
+          let x = rx
+          carCols.forEach(c => {
+            const v = c.k === 'total' ? fmtInt(r.total) : r[c.k]
+            doc.font('R').fontSize(FS).fillColor('#000000').text(String(v), x + pad, ry + pad, { width: c.w - pad * 2, align: c.a })
+            x += c.w
+          })
+        },
+      })
+      y += 16
+    }
+
+    // ─ Fleet-wide totals ─
+    const blockH = 14 * 9 + 30   // a little more than the summary block actually needs — safe margin
+    if (y + blockH > bottom()) { doc.addPage(); y = doc.page.margins.top }
+    doc.font('B').fontSize(11).fillColor(PDF_COLORS.header).text('Итого за период', left, y)
+    doc.fillColor('#000000')
+    y += 20
     const items = [
       ['Обслужено автомобилей', t.cars],
       ['Выполнено заказов', t.orders],
@@ -322,10 +416,11 @@ function buildPdf(rep) {
       doc.text(String(val), left + 200, y, { width: 80, align: 'right' })
       y += 13
     })
-    y += 4
-    doc.font('B').fontSize(11)
-    doc.text('Общая стоимость, ₸', left, y, { width: 200 })
-    doc.text(fmtInt(t.total), left + 200, y, { width: 80, align: 'right' })
+    y += 6
+    doc.rect(left, y, 300, 22).fill(PDF_COLORS.totalBg)
+    doc.font('B').fontSize(11).fillColor('#000000')
+    doc.text('Общая стоимость, ₸', left + pad, y + 6, { width: 196 })
+    doc.text(fmtInt(t.total), left + 200, y + 6, { width: 96, align: 'right' })
 
     doc.end()
   })
