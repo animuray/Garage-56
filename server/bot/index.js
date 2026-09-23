@@ -726,7 +726,7 @@ async function confirmBooking(ctx) {
     head('✅', 'Запись создана') + '\n' +
     `🚗 <b>${carName(car)}</b> · <code>${esc(car.license_plate)}</code>\n` +
     `🗓 <b>${weekday(d.date)}, ${longDate(d.date)} · ${d.time}</b>\n\n` +
-    'Мы ждём вас в Garage 56 🙌\n<i>Как только администратор подтвердит запись — пришлём уведомление.</i>',
+    'Мы свяжемся с вами и подтвердим запись 📞\n<i>Как только это произойдёт — пришлём уведомление.</i>',
     menuBtn(new InlineKeyboard().text('📋 Мои записи', 'apts')))
 }
 
@@ -747,11 +747,11 @@ function statusLine(a) {
   const master = a.master_name ? `👨‍🔧 Мастер: <b>${esc(a.master_name)}</b>` : null
   switch (a.status) {
     case 'pending':
-      return '⏳ <b>Ожидает подтверждения</b>\n<i>Garage 56 свяжется и подтвердит запись</i>'
+      return '⏳ <b>Ожидает подтверждения</b>\n<i>Мы свяжемся с вами и подтвердим запись</i>'
     case 'confirmed':
-      return '🕐 <b>Подтверждена</b> · ждёт своего времени' + (master ? `\n${master}` : '')
+      return '🕐 <b>Подтверждена</b> · ждём вас в назначенное время' + (master ? `\n${master}` : '')
     case 'in_progress':
-      return '🔧 <b>Автомобиль в работе</b>' + (master ? `\n${master}` : '\n<i>мастер назначается</i>')
+      return '🔧 <b>Автомобиль в работе</b> — уже занимаемся!' + (master ? `\n${master}` : '\n<i>мастер назначается</i>')
     case 'completed':
       return '✅ <b>Выполнено</b>' + (master ? ` · ${master}` : '') + (Number(a.total) ? `\n💰 Стоимость: <b>${fmtInt(a.total)} ₸</b>` : '')
     default: return a.status
@@ -1144,13 +1144,15 @@ async function askPeriod(ctx, warn) {
 const masterLine = (a) => a.master_name ? `\n👨‍🔧 Мастер: <b>${esc(a.master_name)}</b>` : '\n👨‍🔧 Мастер: назначается'
 const apptLine = (a) => `🚗 <b>${esc(a.car_make)} ${esc(a.car_model)}</b> · <code>${esc(a.license_plate)}</code>\n🗓 <b>${fmtDate(a.date)} · ${hm(a.time)}</b>`
 const NOTIFY_TEXT = {
-  created: (a) => head('📋', 'Запись создана') + `\n${apptLine(a)}`,
-  confirmed: (a) => head('✅', 'Запись подтверждена') + `\n${apptLine(a)}${a.master_name ? masterLine(a) : ''}\n\nМы ожидаем вас 🙌`,
-  in_progress: (a) => head('✅', 'Запись подтверждена', 'Автомобиль в работе') + `\n${apptLine(a)}\n🔧 Статус: <b>В работе</b>${masterLine(a)}`,
-  rescheduled: (a) => head('🔄', 'Запись перенесена') + `\n${apptLine(a)}`,
+  created: (a) => head('📋', 'Запись создана') + `\n${apptLine(a)}\n\nМы свяжемся с вами и подтвердим запись 📞`,
+  // These two only differ in whether the master is already known — the client is told "we're
+  // expecting you" the moment the order stops being just "pending", not a moment before.
+  confirmed: (a) => head('✅', 'Запись подтверждена') + `\n${apptLine(a)}${a.master_name ? masterLine(a) : ''}\n\nЖдём вас в назначенное время 🙌`,
+  in_progress: (a) => head('✅', 'Запись подтверждена', 'Автомобиль в работе') + `\n${apptLine(a)}\n🔧 Статус: <b>В работе</b>${masterLine(a)}\n\nЖдём вас в Garage 56 🙌`,
+  rescheduled: (a) => head('🔄', 'Запись перенесена') + `\n${apptLine(a)}\n\nПроверьте, пожалуйста, новое время.`,
   cancelled: (a) => head('❌', 'Запись отменена') + `\n${apptLine(a)}`,
   completed: (a) => head('🏁', 'Обслуживание завершено') + `\n${apptLine(a)}${a.master_name ? masterLine(a) : ''}` +
-    (Number(a.total) ? `\n💰 Стоимость: <b>${fmtInt(a.total)} ₸</b>` : '') + '\n\n📖 Техническая книжка обновлена.',
+    (Number(a.total) ? `\n💰 Стоимость: <b>${fmtInt(a.total)} ₸</b>` : '') + '\n\n📖 Техническая книжка обновлена. Спасибо, что выбираете Garage 56!',
 }
 
 /** Tell the company how its car-deletion request was decided in the CRM. */
