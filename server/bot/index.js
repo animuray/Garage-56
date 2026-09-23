@@ -614,7 +614,7 @@ async function showCalendar(ctx, page = 0, warn) {
   d.calPage = page
   const back = new InlineKeyboard()
   if (!dates.length) {
-    menuBtn(back.text('◀️ Другой автомобиль', 'cl|book|0'))
+    menuBtn(back.text('🔄 Другой автомобиль', 'cl|book|0'))
     return show(ctx, bookHead(d, 1, 'дата') + '😔 <b>Свободных дат сейчас нет.</b>\n' +
       `Позвоните нам${st.phone ? `: <b>${esc(st.phone)}</b>` : ''} — подберём время вручную.`, back)
   }
@@ -632,7 +632,7 @@ async function showCalendar(ctx, page = 0, warn) {
     list.text(`${page + 1} / ${pages}`, 'noop')
     list.text('Позже ▶️', page < pages - 1 ? `bk|cal|${page + 1}` : 'noop')
   }
-  const kb = new InlineKeyboard().text('◀️ Другой автомобиль', 'cl|book|0').text('❌ Отмена', 'menu')
+  const kb = new InlineKeyboard().text('🔄 Другой автомобиль', 'cl|book|0').row().text('❌ Отмена', 'menu')
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + bookHead(d, 1, 'дата') +
     `🗓 <b>Выберите дату</b>\n<i>Показаны только свободные дни на ближайшие ${st.daysAhead} дн.</i>`, kb,
   { inline: { text: '👇 <b>Свободные даты</b>', kb: list } })
@@ -647,7 +647,7 @@ async function showTimes(ctx, date, warn) {
   d.date = date; d.time = null
   const list = new InlineKeyboard()
   free.forEach((t, i) => { list.text(t, `bk|time|${t}`); if (i % 4 === 3 && i < free.length - 1) list.row() })
-  const kb = menuBtn(new InlineKeyboard().text('◀️ Другая дата', `bk|cal|${d.calPage || 0}`))
+  const kb = new InlineKeyboard().text('🗓 Другая дата', `bk|cal|${d.calPage || 0}`).text('◀️ Меню', 'menu')
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + bookHead(d, 2, 'время') +
     '🕐 <b>Выберите время</b>\n<i>Только свободные окошки</i>', kb,
   { inline: { text: `👇 <b>Свободное время · ${longDate(date)}</b>`, kb: list } })
@@ -663,7 +663,7 @@ async function showServices(ctx, warn) {
   // (a static bottom keyboard was the point: it keeps the tick/untick flicker-free).
   const list = new InlineKeyboard()
   d.svcList.forEach((name, i) => list.text(`${d.services.includes(i) ? '✅' : '⬜️'} ${name}`, `bk|svc|${i}`).row())
-  const kb = new InlineKeyboard().text('Далее ▶️', 'bk|svcdone').text('◀️ Другое время', `bk|day|${d.date}`)
+  const kb = new InlineKeyboard().text('🕐 Другое время', `bk|day|${d.date}`).text('Далее ➡️', 'bk|svcdone')
   const count = d.services.length ? ` · выбрано ${d.services.length}` : ''
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') +
     bookHead(d, 3, 'услуги') + '🔧 <b>Выберите необходимые работы</b>\n<i>Отметьте нужные — можно несколько</i>', kb,
@@ -674,7 +674,8 @@ async function askComment(ctx) {
   const d = bookDraft(ctx); if (!d) return expired(ctx)
   sess(ctx).mode = 'comment'
   await show(ctx, bookHead(d, 4, 'пожелания') + '💬 <b>Есть дополнительные пожелания?</b>\nНапишите сообщение или нажмите «Пропустить».',
-    menuBtn(new InlineKeyboard().text('⏭ Пропустить', 'bk|skipcomment')), { placeholder: 'Ваш комментарий для мастера…' })
+    new InlineKeyboard().text('◀️ Назад', 'bk|svcback').text('⏭ Пропустить', 'bk|skipcomment'),
+    { placeholder: 'Ваш комментарий для мастера…' })
 }
 
 async function showBookConfirm(ctx) {
@@ -683,7 +684,7 @@ async function showBookConfirm(ctx) {
   const car = await data.getCar(ctx.org.corporate_id, d.carId)
   if (!car) return expired(ctx)
   const names = d.services.map(i => d.svcList[i])
-  const kb = new InlineKeyboard().text('✅ Подтвердить запись', 'bk|ok').text('❌ Отмена', 'menu')
+  const kb = new InlineKeyboard().text('✅ Подтвердить запись', 'bk|ok').row().text('❌ Отмена', 'menu')
   const lines = [
     head('📋', 'Проверьте запись'),
     `🚗 <b>${carName(car)}</b> · <code>${esc(car.license_plate)}</code>`,
@@ -931,6 +932,7 @@ async function route(ctx, cb) {
         dr.services.sort((x, y) => x - y)
         return askComment(ctx)
       }
+      if (b === 'svcback') return showServices(ctx)
       if (b === 'skipcomment') return showBookConfirm(ctx)
       if (b === 'ok') return confirmBooking(ctx)
       return
