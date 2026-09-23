@@ -25,7 +25,6 @@ const addDays = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 864e5)
 const lastDayOfMonth = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate()
 const parseNum = (t) => Number(String(t).replace(/\s/g, '').replace(',', '.'))
 const FUELS = ['Бензин', 'Дизель', 'Газ', 'Гибрид', 'Электро']
-const isOilService = (name) => /масл/i.test(name)
 
 // Look & feel: one heading style, one divider, the same icons for the same things everywhere
 const LINE = '━━━━━━━━━━━━━━━'
@@ -666,20 +665,11 @@ async function showServices(ctx, warn) {
   // (a static bottom keyboard was the point: it keeps the tick/untick flicker-free).
   const list = new InlineKeyboard()
   d.svcList.forEach((name, i) => list.text(`${d.services.includes(i) ? '✅' : '⬜️'} ${name}`, `bk|svc|${i}`).row())
-  const kb = new InlineKeyboard().text('Далее ▶️', 'bk|svcdone').row().text('◀️ Другое время', `bk|day|${d.date}`)
+  const kb = new InlineKeyboard().text('Далее ▶️', 'bk|svcdone').text('◀️ Другое время', `bk|day|${d.date}`)
   const count = d.services.length ? ` · выбрано ${d.services.length}` : ''
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') +
     bookHead(d, 3, 'услуги') + '🔧 <b>Выберите необходимые работы</b>\n<i>Отметьте нужные — можно несколько</i>', kb,
   { inline: { text: `👇 <b>Работы</b>${count}`, kb: list } })
-}
-
-async function askOil(ctx) {
-  const d = bookDraft(ctx); if (!d) return expired(ctx)
-  const kb = new InlineKeyboard()
-    .text('🛢 Подберёт мастер', 'bk|oil|Подберёт мастер')
-    .text('🛢 Масло клиента', 'bk|oil|Масло клиента')
-  await show(ctx, bookHead(d, 3, 'услуги') + '🛢 <b>Какое масло необходимо?</b>\n' +
-    '<i>Окончательный подбор и количество определяет мастер. Свои пожелания по маслу можно написать в комментарии.</i>', kb)
 }
 
 async function askComment(ctx) {
@@ -704,7 +694,6 @@ async function showBookConfirm(ctx) {
     '',
     '🔧 <b>Услуги</b>',
     names.length ? names.map(n => `▫️ ${esc(n)}`).join('\n') : '—',
-    d.oilPreference ? `\n🛢 Масло: <b>${esc(d.oilPreference)}</b>` : null,
     d.comment ? `\n💬 <i>«${esc(d.comment)}»</i>` : null,
   ].filter(l => l !== null)
   await show(ctx, lines.join('\n'), kb)
@@ -718,7 +707,7 @@ async function confirmBooking(ctx) {
   const who = ctx.org.user_name || data.dbSafe(ctx.from.first_name).trim() || 'сотрудник'
   const comment = [`Запись из Telegram (${who}).`, d.comment].filter(Boolean).join('\n')
   const id = await data.createAppointment(ctx.org, car, {
-    date: d.date, time: d.time, services: names, oilPreference: d.oilPreference, comment,
+    date: d.date, time: d.time, services: names, comment,
   })
   if (!id) {
     return showTimes(ctx, d.date, 'Это время только что заняли. Выберите другое.')
@@ -938,9 +927,8 @@ async function route(ctx, cb) {
       if (b === 'svcdone') {
         if (!dr.services.length) return showServices(ctx, 'Выберите хотя бы одну работу')
         dr.services.sort((x, y) => x - y)
-        return dr.services.some(i => isOilService(dr.svcList[i])) ? askOil(ctx) : askComment(ctx)
+        return askComment(ctx)
       }
-      if (b === 'oil') { dr.oilPreference = c; return askComment(ctx) }
       if (b === 'skipcomment') return showBookConfirm(ctx)
       if (b === 'ok') return confirmBooking(ctx)
       return
