@@ -245,12 +245,11 @@ async function showCarList(ctx, mode, offset = 0) {
   const { rows, total } = await data.listCars(ctx.org.corporate_id, { q: s.q, offset, limit: PAGE })
   const [icon, title, hint] = CL_TITLE[mode]
 
-  // actions: bottom keyboard — side by side, not stacked one under another
+  // actions: bottom keyboard — main actions together on top, Меню always its own row at the bottom
   const kb = new InlineKeyboard().text('🔍 Найти автомобиль', `find|${mode}`)
   if (s.q) kb.text('✖️ Сбросить поиск', `clr|${mode}`)
-  kb.row()
-  if (mode !== 'tb') kb.text('➕ Добавить автомобиль', `car|add|${mode}`).text('◀️ Меню', 'menu')
-  else menuBtn(kb)
+  if (mode !== 'tb') kb.text('➕ Добавить автомобиль', `car|add|${mode}`)
+  menuBtn(kb)
 
   let text = head(icon, title) + `\nВсего автомобилей: <b>${total}</b>`
   if (s.q) text += `\n🔍 Поиск: <b>«${esc(s.q)}»</b>`
@@ -296,7 +295,8 @@ async function showCar(ctx, carId) {
     .text('📖 История обслуживания', `hist|${car.id}|0`).row()
     .text('📅 Записать на ТО', `bk|car|${car.id}`)
   if (!delReq) kb.text('🗑 Запросить удаление', `cdr|ask|${car.id}`)
-  kb.row().text('◀️ К списку', 'cl|cars|0').text('◀️ Меню', 'menu')
+  kb.row().text('◀️ К списку', 'cl|cars|0')
+  menuBtn(kb)
   await show(ctx, lines.join('\n'), kb)
 }
 
@@ -366,7 +366,7 @@ async function sendDeleteRequest(ctx) {
     head('📨', 'Запрос отправлен') + '\n' +
     `🚗 <b>${carName(car)}</b> · <code>${esc(car.license_plate)}</code>\n\n` +
     'Администратор Garage 56 рассмотрит запрос. Автомобиль останется в списке до решения — мы пришлём уведомление.',
-    new InlineKeyboard().text('🚗 К автомобилю', `car|${car.id}`).text('📋 К списку', 'cl|cars|0').text('◀️ Меню', 'menu'))
+    menuBtn(new InlineKeyboard().text('🚗 К автомобилю', `car|${car.id}`).text('📋 К списку', 'cl|cars|0')))
 }
 
 const HIST_PAGE = 4
@@ -401,7 +401,8 @@ async function showHistory(ctx, carId, offset) {
   if (offset > 0) kb.text('◀️ Новее', `hist|${car.id}|${Math.max(0, offset - HIST_PAGE)}`)
   if (offset + HIST_PAGE < total) kb.text('Старее ▶️', `hist|${car.id}|${offset + HIST_PAGE}`)
   if (offset > 0 || offset + HIST_PAGE < total) kb.row()
-  kb.text('◀️ К автомобилю', `car|${car.id}`).text('◀️ Меню', 'menu')
+  kb.text('◀️ К автомобилю', `car|${car.id}`)
+  menuBtn(kb)
   await show(ctx,
     head('📖', 'История обслуживания', `${carName(car)} · <code>${esc(car.license_plate)}</code>`) + '\n' +
     (blocks.length ? blocks.join(`\n${SOFT}\n`) : 'Записей об обслуживании пока нет.'), kb)
@@ -516,7 +517,7 @@ async function handleAddCarText(ctx, text) {
         }
         return show(ctx, own ? 'ℹ️ Автомобиль с таким госномером уже есть в вашем автопарке.'
           : '⚠️ Автомобиль с таким госномером уже зарегистрирован в системе. Обратитесь в Garage 56.',
-        new InlineKeyboard().text('🚗 Мои автомобили', 'cl|cars|0').text('◀️ Меню', 'menu'))
+        menuBtn(new InlineKeyboard().text('🚗 Мои автомобили', 'cl|cars|0')))
       }
       c.plate = plate; break
     }
@@ -544,7 +545,8 @@ async function saveCar(ctx) {
     sess(ctx).mode = null; sess(ctx).draft = null
     const kb = new InlineKeyboard().text('🚗 Открыть карточку', `car|${id}`)
     if (back === 'book') kb.text('📅 Записать на ТО', `bk|car|${id}`)
-    kb.row().text('➕ Добавить ещё', `car|add|${back}`).text('◀️ Меню', 'menu')
+    kb.row().text('➕ Добавить ещё', `car|add|${back}`)
+    menuBtn(kb)
     await show(ctx, head('✅', 'Автомобиль добавлен') + `\n🚗 <b>${esc(c.make)} ${esc(c.model)}</b>\n🔖 <code>${esc(c.plate)}</code>`, kb)
   } catch (e) {
     if (e.code === '23505') return show(ctx, '⚠️ Автомобиль с таким госномером уже есть в системе.', menuBtn(new InlineKeyboard()))
@@ -582,7 +584,7 @@ function bookDraft(ctx) {
   return d?.kind === 'book' ? d : null
 }
 async function expired(ctx) {
-  await show(ctx, '⌛ Сессия записи устарела. Начните заново.', new InlineKeyboard().text('📅 Записаться', 'book').text('◀️ Меню', 'menu'))
+  await show(ctx, '⌛ Сессия записи устарела. Начните заново.', menuBtn(new InlineKeyboard().text('📅 Записаться', 'book')))
 }
 
 /** Common header of every booking step: what has been chosen so far. */
@@ -597,11 +599,11 @@ async function showBookStart(ctx) {
   const { total: activeCount } = await data.listAppointments(ctx.org.corporate_id, 'active', 0, 1)
   if (!total) {
     return show(ctx, head('📅', 'Записаться') + '\nСначала добавьте автомобиль в автопарк.',
-      new InlineKeyboard().text('➕ Добавить автомобиль', 'car|add|book').text('◀️ Меню', 'menu'))
+      menuBtn(new InlineKeyboard().text('➕ Добавить автомобиль', 'car|add|book')))
   }
-  const kb = new InlineKeyboard().text('🚗 Выбрать автомобиль', 'cl|book|0').row()
+  const kb = new InlineKeyboard().text('🚗 Выбрать автомобиль', 'cl|book|0')
   if (activeCount) kb.text(`📋 Мои записи (${activeCount})`, 'apts')
-  kb.text('◀️ Меню', 'menu')
+  menuBtn(kb)
   await show(ctx, head('📅', 'Записаться', 'Быстрая запись за 4 шага') +
     '\n1️⃣ Дата\n2️⃣ Время\n3️⃣ Услуги\n4️⃣ Пожелания\n\nМы подтвердим запись и пришлём уведомление.', kb)
 }
@@ -615,7 +617,7 @@ async function showCalendar(ctx, page = 0, warn) {
   d.calPage = page
   const back = new InlineKeyboard()
   if (!dates.length) {
-    back.text('◀️ Другой автомобиль', 'cl|book|0').text('◀️ Меню', 'menu')
+    menuBtn(back.text('◀️ Другой автомобиль', 'cl|book|0'))
     return show(ctx, bookHead(d, 1, 'дата') + '😔 <b>Свободных дат сейчас нет.</b>\n' +
       `Позвоните нам${st.phone ? `: <b>${esc(st.phone)}</b>` : ''} — подберём время вручную.`, back)
   }
@@ -648,7 +650,7 @@ async function showTimes(ctx, date, warn) {
   d.date = date; d.time = null
   const list = new InlineKeyboard()
   free.forEach((t, i) => { list.text(t, `bk|time|${t}`); if (i % 4 === 3 && i < free.length - 1) list.row() })
-  const kb = new InlineKeyboard().text('◀️ Другая дата', `bk|cal|${d.calPage || 0}`).text('◀️ Меню', 'menu')
+  const kb = menuBtn(new InlineKeyboard().text('◀️ Другая дата', `bk|cal|${d.calPage || 0}`))
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + bookHead(d, 2, 'время') +
     '🕐 <b>Выберите время</b>\n<i>Только свободные окошки</i>', kb,
   { inline: { text: `👇 <b>Свободное время · ${longDate(date)}</b>`, kb: list } })
@@ -684,7 +686,7 @@ async function askComment(ctx) {
   const d = bookDraft(ctx); if (!d) return expired(ctx)
   sess(ctx).mode = 'comment'
   await show(ctx, bookHead(d, 4, 'пожелания') + '💬 <b>Есть дополнительные пожелания?</b>\nНапишите сообщение или нажмите «Пропустить».',
-    new InlineKeyboard().text('⏭ Пропустить', 'bk|skipcomment').text('◀️ Меню', 'menu'), { placeholder: 'Ваш комментарий для мастера…' })
+    menuBtn(new InlineKeyboard().text('⏭ Пропустить', 'bk|skipcomment')), { placeholder: 'Ваш комментарий для мастера…' })
 }
 
 async function showBookConfirm(ctx) {
@@ -730,7 +732,7 @@ async function confirmBooking(ctx) {
     `🚗 <b>${carName(car)}</b> · <code>${esc(car.license_plate)}</code>\n` +
     `🗓 <b>${weekday(d.date)}, ${longDate(d.date)} · ${d.time}</b>\n\n` +
     'Мы ждём вас в Garage 56 🙌\n<i>Как только администратор подтвердит запись — пришлём уведомление.</i>',
-    new InlineKeyboard().text('📋 Мои записи', 'apts').text('◀️ Меню', 'menu'))
+    menuBtn(new InlineKeyboard().text('📋 Мои записи', 'apts')))
 }
 
 const APT_PAGE = 4   // same page size as the service history, so a screen never turns into a wall of text
@@ -775,7 +777,8 @@ async function showAppointments(ctx, tab = 'active', offset = 0) {
     if (page < pages - 1) kb.text('Вперёд ▶️', `apts|${tab}|${offset + APT_PAGE}`)
     kb.row()
   }
-  kb.text('📅 Новая запись', 'book').text('◀️ Меню', 'menu')
+  kb.text('📅 Новая запись', 'book')
+  menuBtn(kb)
   const empty = tab === 'done' ? 'Завершённых работ пока нет.' : 'Активных записей нет.'
   await show(ctx,
     head('📋', 'Мои записи', `${tab === 'done' ? 'завершённые' : 'активные'} · ${total}`) + '\n' +
@@ -805,7 +808,7 @@ async function showReportMenu(ctx, year) {
   list.text(`📦 Весь ${year} год`, `rep|yr|${year}`)
   if (year < curYear) list.text(`${year + 1} ▶️`, `rep|y|${year + 1}`)
 
-  const kb = new InlineKeyboard().text('🗓 Свой период', 'rep|custom').text('◀️ Меню', 'menu')
+  const kb = menuBtn(new InlineKeyboard().text('🗓 Свой период', 'rep|custom'))
   const total = Object.values(months).reduce((s, n) => s + n, 0)
   await show(ctx, head('📊', 'Отчёты', 'Для бухгалтерии: Excel и PDF') +
     `\nОтчёт по фактически выполненным работам: автомобили, масло и фильтры, мастера и стоимость.\n\n` +
@@ -818,7 +821,8 @@ async function showReport(ctx, from, to) {
   const rep = R.buildReport(rows, { from, to, company: ctx.org.company_name })
   const kb = new InlineKeyboard()
   if (rows.length) kb.text('📄 Скачать PDF', `rep|pdf|${from}|${to}`).text('📊 Скачать Excel', `rep|xls|${from}|${to}`).row()
-  kb.text('📆 Другой месяц', `rep|y|${from.slice(0, 4)}`).text('◀️ Меню', 'menu')
+  kb.text('📆 Другой месяц', `rep|y|${from.slice(0, 4)}`)
+  menuBtn(kb)
   await show(ctx, rows.length ? R.summaryText(rep, esc)
     : head('📊', 'Отчёт', R.periodTitle(from, to)) + '\nЗа этот период выполненных работ нет.', kb)
 }
@@ -867,7 +871,7 @@ async function route(ctx, cb) {
     case 'cl': sess(ctx).mode = null; return showCarList(ctx, b, parseInt(c, 10) || 0)
     case 'find': sess(ctx).mode = `search:${b}`
       return show(ctx, head('🔍', 'Поиск автомобиля') + '\nВведите госномер, марку или модель.',
-        new InlineKeyboard().text('◀️ Назад', `cl|${b}|0`).text('◀️ Меню', 'menu'), { placeholder: 'Госномер, марка или модель' })
+        menuBtn(new InlineKeyboard().text('◀️ Назад', `cl|${b}|0`)), { placeholder: 'Госномер, марка или модель' })
     case 'clr': sess(ctx).q = ''; return showCarList(ctx, b, 0)
     case 'car':
       if (b === 'add') return startAddCar(ctx, c)
@@ -1029,7 +1033,7 @@ async function askPeriod(ctx, warn) {
   sess(ctx).mode = 'period'
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + head('🗓', 'Свой период') +
     '\nВведите даты через дефис:\n<code>01.08.2026-31.08.2026</code>',
-    new InlineKeyboard().text('◀️ Назад', 'rep').text('◀️ Меню', 'menu'), { placeholder: '01.08.2026-31.08.2026' })
+    menuBtn(new InlineKeyboard().text('◀️ Назад', 'rep')), { placeholder: '01.08.2026-31.08.2026' })
 }
 
 // ─── Notifications (called by the API when the CRM changes an appointment) ───
