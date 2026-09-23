@@ -596,6 +596,11 @@ function bookHead(d, step, title) {
     `🚗 ${esc(d.carLabel)}\n` + (d.date ? `🗓 ${weekday(d.date)}, ${longDate(d.date)}${d.time ? ` · ${d.time}` : ''}\n` : '') + '\n'
 }
 
+/** A big, hard-to-miss date/time — for the two screens where it really needs to stick: the final
+ * confirmation and the "booked!" screen right after. */
+const dateTimeBlock = (date, time) =>
+  `<blockquote>🗓 <b>${weekday(date)}, ${longDate(date)}</b>\n🕐 <b>${time}</b></blockquote>`
+
 async function showBookStart(ctx) {
   const s = sess(ctx); s.mode = null; s.draft = null; s.q = ''
   const { total } = await data.listCars(ctx.org.corporate_id, { limit: 1 })
@@ -696,8 +701,7 @@ async function showBookConfirm(ctx) {
     head('📋', 'Проверьте запись'),
     `🚗 <b>${carName(car)}</b> · <code>${esc(car.license_plate)}</code>`,
     `🛣 Пробег: ${fmtInt(car.mileage)} км`,
-    `🗓 <b>${weekday(d.date)}, ${longDate(d.date)} · ${d.time}</b>`,
-    '',
+    dateTimeBlock(d.date, d.time),
     '🔧 <b>Услуги</b>',
     names.length ? names.map(n => `▫️ ${esc(n)}`).join('\n') : '—',
     d.comment ? `\n💬 <i>«${esc(d.comment)}»</i>` : null,
@@ -725,7 +729,7 @@ async function confirmBooking(ctx) {
   await show(ctx,
     head('✅', 'Запись создана') + '\n' +
     `🚗 <b>${carName(car)}</b> · <code>${esc(car.license_plate)}</code>\n` +
-    `🗓 <b>${weekday(d.date)}, ${longDate(d.date)} · ${d.time}</b>\n\n` +
+    dateTimeBlock(d.date, d.time) + '\n' +
     'Мы свяжемся с вами и подтвердим запись 📞\n<i>Как только это произойдёт — пришлём уведомление.</i>',
     menuBtn(new InlineKeyboard().text('📋 Мои записи', 'apts')))
 }
