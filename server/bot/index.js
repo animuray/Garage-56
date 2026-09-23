@@ -244,17 +244,21 @@ async function showCarList(ctx, mode, offset = 0) {
   const { rows, total } = await data.listCars(ctx.org.corporate_id, { q: s.q, offset, limit: PAGE })
   const [icon, title, hint] = CL_TITLE[mode]
 
-  // actions: bottom keyboard — main actions together on top, Меню always its own row at the bottom
+  // actions: bottom keyboard — main actions together on top, Меню always its own row at the bottom.
+  // Booking picks from the EXISTING fleet — adding a car isn't offered on this screen.
   const kb = new InlineKeyboard()
-  if (mode !== 'tb') kb.text('➕ Добавить автомобиль', `car|add|${mode}`)
+  if (mode !== 'tb' && mode !== 'book') kb.text('➕ Добавить автомобиль', `car|add|${mode}`)
   kb.text('🔍 Найти автомобиль', `find|${mode}`)
   if (s.q) kb.text('✖️ Сбросить поиск', `clr|${mode}`)
   menuBtn(kb)
 
   let text = head(icon, title) + `\nВсего автомобилей: <b>${total}</b>`
   if (s.q) text += `\n🔍 Поиск: <b>«${esc(s.q)}»</b>`
-  if (!total) text += s.q ? '\n\nНичего не найдено — попробуйте другой запрос.'
-    : '\n\nПока нет автомобилей. Добавьте первый или попросите Garage 56 загрузить список из Excel.'
+  if (!total) {
+    if (s.q) text += '\n\nНичего не найдено — попробуйте другой запрос.'
+    else if (mode === 'book') text += '\n\nПока нет автомобилей. Добавьте первый в разделе «Мои автомобили».'
+    else text += '\n\nПока нет автомобилей. Добавьте первый или попросите Garage 56 загрузить список из Excel.'
+  }
 
   // the list itself: inline buttons in the chat (scrollable, doesn't overload the bottom panel)
   let inline = null
@@ -614,7 +618,7 @@ async function showCalendar(ctx, page = 0, warn) {
   d.calPage = page
   const back = new InlineKeyboard()
   if (!dates.length) {
-    menuBtn(back.text('🔄 Другой автомобиль', 'cl|book|0'))
+    menuBtn(back.text('◀️ Назад', 'cl|book|0'))
     return show(ctx, bookHead(d, 1, 'дата') + '😔 <b>Свободных дат сейчас нет.</b>\n' +
       `Позвоните нам${st.phone ? `: <b>${esc(st.phone)}</b>` : ''} — подберём время вручную.`, back)
   }
@@ -632,7 +636,7 @@ async function showCalendar(ctx, page = 0, warn) {
     list.text(`${page + 1} / ${pages}`, 'noop')
     list.text('Позже ▶️', page < pages - 1 ? `bk|cal|${page + 1}` : 'noop')
   }
-  const kb = new InlineKeyboard().text('❌ Отмена', 'menu').text('🔄 Другой автомобиль', 'cl|book|0')
+  const kb = new InlineKeyboard().text('◀️ Назад', 'cl|book|0')
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + bookHead(d, 1, 'дата') +
     `🗓 <b>Выберите дату</b>\n<i>Показаны только свободные дни на ближайшие ${st.daysAhead} дн.</i>`, kb,
   { inline: { text: '👇 <b>Свободные даты</b>', kb: list } })
@@ -647,7 +651,7 @@ async function showTimes(ctx, date, warn) {
   d.date = date; d.time = null
   const list = new InlineKeyboard()
   free.forEach((t, i) => { list.text(t, `bk|time|${t}`); if (i % 4 === 3 && i < free.length - 1) list.row() })
-  const kb = new InlineKeyboard().text('🏠 Меню', 'menu').text('🗓 Другая дата', `bk|cal|${d.calPage || 0}`)
+  const kb = new InlineKeyboard().text('◀️ Назад', `bk|cal|${d.calPage || 0}`)
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + bookHead(d, 2, 'время') +
     '🕐 <b>Выберите время</b>\n<i>Только свободные окошки</i>', kb,
   { inline: { text: `👇 <b>Свободное время · ${longDate(date)}</b>`, kb: list } })
@@ -673,7 +677,10 @@ async function showServices(ctx, warn) {
 async function askComment(ctx) {
   const d = bookDraft(ctx); if (!d) return expired(ctx)
   sess(ctx).mode = 'comment'
-  await show(ctx, bookHead(d, 4, 'пожелания') + '💬 <b>Есть дополнительные пожелания?</b>\nНапишите сообщение или нажмите «Пропустить».',
+  // the picked services vanished from this screen — show them so the client sees what they're leaving a note about
+  const names = (d.services || []).map(i => d.svcList[i]).filter(Boolean)
+  const svcLine = names.length ? `🔧 <b>Услуги:</b> ${names.map(esc).join(', ')}\n\n` : ''
+  await show(ctx, bookHead(d, 4, 'пожелания') + svcLine + '💬 <b>Есть дополнительные пожелания?</b>\nНапишите сообщение или нажмите «Пропустить».',
     new InlineKeyboard().text('◀️ Назад', 'bk|svcback').text('⏭ Пропустить', 'bk|skipcomment'),
     { placeholder: 'Ваш комментарий для мастера…' })
 }
