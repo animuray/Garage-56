@@ -667,7 +667,7 @@ async function showServices(ctx, warn) {
   // (a static bottom keyboard was the point: it keeps the tick/untick flicker-free).
   const list = new InlineKeyboard()
   d.svcList.forEach((name, i) => list.text(`${d.services.includes(i) ? '✅' : '⬜️'} ${name}`, `bk|svc|${i}`).row())
-  const kb = new InlineKeyboard().text('🕐 Другое время', `bk|day|${d.date}`).text('Далее ➡️', 'bk|svcdone')
+  const kb = new InlineKeyboard().text('◀️ Назад', `bk|day|${d.date}`).text('Далее ➡️', 'bk|svcdone')
   const count = d.services.length ? ` · выбрано ${d.services.length}` : ''
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') +
     bookHead(d, 3, 'услуги') + '🔧 <b>Выберите необходимые работы</b>\n<i>Отметьте нужные — можно несколько</i>', kb,
