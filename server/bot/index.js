@@ -65,7 +65,7 @@ function toBottomKeyboard(inline, { addMenu = false, placeholder = null } = {}) 
   const sourceRows = [...inline.inline_keyboard]
   // Every screen must offer a way back home
   if (addMenu && !sourceRows.flat().some(b => MENU_ACTIONS.has(b.callback_data))) {
-    sourceRows.push([{ text: '◀️ Меню', callback_data: 'menu' }])
+    sourceRows.push([{ text: '🏠 Меню', callback_data: 'menu' }])
   }
   for (const row of sourceRows) {
     rows.push(row.map(btn => {
@@ -129,7 +129,7 @@ async function show(ctx, text, kb, { fresh = false, home = false, inline = null,
   for (const id of stale) if (id && id !== s.screen && id !== s.extra) ctx.api.deleteMessage(chatId, id).catch(() => {})
 }
 
-const menuBtn = (kb) => kb.row().text('◀️ Меню', 'menu')
+const menuBtn = (kb) => kb.row().text('🏠 Меню', 'menu')
 
 // Main sections (the buttons of the home screen)
 const NAV = {
@@ -318,7 +318,7 @@ async function sendRestoreRequest(ctx, carId) {
   await show(ctx,
     head('📨', 'Запрос на восстановление отправлен') + `\n${carLine}\n\n` +
     'Администратор Garage 56 рассмотрит запрос. Как только автомобиль вернут в автопарк — пришлём уведомление. История обслуживания сохранена.',
-    new InlineKeyboard().text('◀️ Меню', 'menu'))
+    new InlineKeyboard().text('🏠 Меню', 'menu'))
 }
 
 // ─── Request to delete a car: the client can't delete, only ask the administrator ───
@@ -506,7 +506,7 @@ async function handleAddCarText(ctx, text) {
           const carLine = `🚗 <b>${carName(dup)}</b> · <code>${esc(dup.license_plate)}</code>`
           if (await data.getPendingDeleteRequest(dup.id)) {
             return show(ctx, head('⏳', 'Запрос уже отправлен') + `\n${carLine}\n\nАдминистратор Garage 56 рассматривает восстановление. Мы пришлём уведомление, когда решение будет принято.`,
-              new InlineKeyboard().text('◀️ Меню', 'menu'))
+              new InlineKeyboard().text('🏠 Меню', 'menu'))
           }
           return show(ctx,
             head('♻️', 'Автомобиль уже был в вашем парке') + `\n${carLine}\n\n` +
@@ -647,7 +647,7 @@ async function showTimes(ctx, date, warn) {
   d.date = date; d.time = null
   const list = new InlineKeyboard()
   free.forEach((t, i) => { list.text(t, `bk|time|${t}`); if (i % 4 === 3 && i < free.length - 1) list.row() })
-  const kb = new InlineKeyboard().text('🗓 Другая дата', `bk|cal|${d.calPage || 0}`).row().text('◀️ Меню', 'menu')
+  const kb = new InlineKeyboard().text('🗓 Другая дата', `bk|cal|${d.calPage || 0}`).row().text('🏠 Меню', 'menu')
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + bookHead(d, 2, 'время') +
     '🕐 <b>Выберите время</b>\n<i>Только свободные окошки</i>', kb,
   { inline: { text: `👇 <b>Свободное время · ${longDate(date)}</b>`, kb: list } })
@@ -729,11 +729,11 @@ const APT_PAGE = 4   // same page size as the service history, so a screen never
 function statusLine(a) {
   const master = a.master_name ? esc(a.master_name) : null
   switch (a.status) {
-    case 'pending': return '⏳ Ожидает подтверждения'
-    case 'confirmed': return '✅ Подтверждена' + (master ? ` · 👨‍🔧 Мастер: ${master}` : '')
+    case 'pending': return '⏳ <b>Ожидает подтверждения</b>'
+    case 'confirmed': return '✅ <b>Подтверждена</b>' + (master ? ` · 👨‍🔧 Мастер: <b>${master}</b>` : '')
     case 'in_progress': return '🔧 <b>В работе</b> · ' + (master ? `👨‍🔧 Мастер: <b>${master}</b>` : 'мастер назначается')
     case 'completed':
-      return '✅ Выполнено' + (master ? ` · 👨‍🔧 ${master}` : '') + (Number(a.total) ? ` · 💰 <b>${fmtInt(a.total)} ₸</b>` : '')
+      return '✅ <b>Выполнено</b>' + (master ? ` · 👨‍🔧 ${master}` : '') + (Number(a.total) ? ` · 💰 <b>${fmtInt(a.total)} ₸</b>` : '')
     default: return a.status
   }
 }
@@ -754,8 +754,9 @@ async function showAppointments(ctx, tab = 'active', offset = 0) {
       ? (a.date === today ? ' · 🔥 <b>Сегодня</b>' : a.date === addDays(today, 1) ? ' · Завтра' : '')
       : ''
     const when = tab === 'done' ? fmtDate(a.date) : `${fmtDate(a.date)} · ${hm(a.time)}`
-    return `🗓 <b>${when}</b>${dayTag}\n🚗 ${esc(a.car_make)} ${esc(a.car_model)} · <code>${esc(a.license_plate)}</code>\n` +
-      `🔧 ${esc((a.services || []).join(', ') || '—')}\n${statusLine(a)}`
+    // each order in its own quote block — reads as a distinct card instead of a wall of plain text
+    return `<blockquote>🗓 <b>${when}</b>${dayTag}\n🚗 <b>${esc(a.car_make)} ${esc(a.car_model)}</b> · <code>${esc(a.license_plate)}</code>\n` +
+      `🔧 ${esc((a.services || []).join(', ') || '—')}\n${statusLine(a)}</blockquote>`
   })
   const pages = Math.max(1, Math.ceil(total / APT_PAGE))
   if (pages > 1) {
@@ -771,7 +772,7 @@ async function showAppointments(ctx, tab = 'active', offset = 0) {
   const empty = tab === 'done' ? 'Завершённых работ пока нет.' : 'Активных записей нет.'
   await show(ctx,
     head('📋', 'Мои записи', `${tab === 'done' ? 'завершённые' : 'активные'} · ${total}`) + '\n' +
-    (cards.length ? cards.join(`\n${SOFT}\n`) : empty), kb)
+    (cards.length ? cards.join('\n') : empty), kb)
 }
 
 // ─── Reports ─────────────────────────────────────────────────────────────────
@@ -890,7 +891,7 @@ async function route(ctx, cb) {
     case 'apt':
       if (b === 'cancel') {
         return show(ctx, head('❓', 'Отменить запись?') + '\nЗапись будет отменена, время освободится.',
-          new InlineKeyboard().text('Да, отменить', `apt|cancelok|${c}`).text('Нет', 'apts'))
+          new InlineKeyboard().text('↩️ Нет', 'apts').text('❌ Да, отменить', `apt|cancelok|${c}`).row().text('◀️ Назад', 'apts'))
       }
       if (b === 'cancelok') {
         const r = await data.cancelAppointment(corp, parseInt(c, 10))
@@ -1147,7 +1148,7 @@ function buildBot(token) {
   b.catch(async (err) => {
     console.error('[bot] error:', err.error?.message || err.message)
     try {
-      await show(err.ctx, '⚠️ Что-то пошло не так. Попробуйте ещё раз.', new InlineKeyboard().text('◀️ Меню', 'menu'))
+      await show(err.ctx, '⚠️ Что-то пошло не так. Попробуйте ещё раз.', new InlineKeyboard().text('🏠 Меню', 'menu'))
     } catch { /* ignore */ }
   })
 
