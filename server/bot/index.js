@@ -149,7 +149,8 @@ const homeKeyboard = () => new InlineKeyboard()
 // ─── Authorization ───────────────────────────────────────────────────────────
 async function showWelcome(ctx, opts) {
   sess(ctx).mode = null
-  const kb = new InlineKeyboard().text('🔑 Войти по коду', 'auth|login').row().text('📝 Получить доступ', 'auth|access')
+  const kb = new InlineKeyboard().text('🔑 Войти по коду', 'auth|login').row()
+    .text('📝 Получить доступ', 'auth|access').row().text('📞 Связаться', 'auth|contact')
   await show(ctx,
     head('🏁', 'GARAGE 56', 'Обслуживание корпоративных автопарков') +
     '\nДобро пожаловать! Здесь вы записываете автомобили на обслуживание, смотрите техническую книжку ' +
@@ -161,17 +162,34 @@ async function askCode(ctx, warn) {
   await show(ctx,
     (warn ? `⚠️ ${warn}\n\n` : '') + head('🔑', 'Вход') +
     '\nВведите код подключения, который вам выдал Garage 56.',
-    new InlineKeyboard().text('◀️ Назад', 'auth|back'), { placeholder: 'Код подключения' })
+    new InlineKeyboard().text('◀️ Назад', 'auth|back').row().text('📞 Связаться', 'auth|contact'),
+    { placeholder: 'Код подключения' })
 }
 
 async function showAccessInfo(ctx) {
-  const st = await data.getSettings()
-  const contacts = [st.phone && `📞 ${esc(st.phone)}`, st.address && `📍 ${esc(st.address)}`].filter(Boolean).join('\n')
-  const kb = new InlineKeyboard().text('🔑 У меня есть код', 'auth|login')
+  const kb = new InlineKeyboard().text('🔑 У меня есть код', 'auth|login').row().text('📞 Связаться с Garage 56', 'auth|contact')
   await show(ctx,
     head('📝', 'Как получить доступ') +
     '\nДоступ выдаёт администратор Garage 56: он создаёт вашу организацию и присылает одноразовый код подключения.\n' +
-    (contacts ? `\n${contacts}\n` : '') + '\nПолучили код — нажмите кнопку ниже.', kb)
+    '\nНет кода или не знаете, к кому обратиться, — нажмите «Связаться».\n\nПолучили код — нажмите кнопку ниже.', kb)
+}
+
+/** Phone/email/address/social — whatever is filled in on the CRM's "Настройки" page. */
+async function showContact(ctx) {
+  const st = await data.getSettings()
+  const lines = [
+    st.phone && `📞 <code>${esc(st.phone)}</code>`,
+    st.email && `✉️ ${esc(st.email)}`,
+    st.address && `📍 ${esc(st.address)}`,
+    ...(st.socialLinks || []).filter(l => l?.name && l?.url).map(l => `🔗 ${esc(l.name)}: ${esc(l.url)}`),
+  ].filter(Boolean)
+  const kb = new InlineKeyboard().text('◀️ Назад', 'auth|access')
+  await show(ctx,
+    head('📞', 'Связаться с Garage 56') +
+    (lines.length
+      ? '\n' + lines.join('\n') + '\n\n<i>Напишите или позвоните — поможем с кодом подключения и ответим на вопросы.</i>'
+      : '\n⚠️ Контакты пока не заполнены в настройках CRM (раздел «Настройки» → «Контакты»). Уточните их у своего представителя Garage 56.'),
+    kb)
 }
 
 const normalizeCode = (t) => {
@@ -835,7 +853,12 @@ async function route(ctx, cb) {
   const corp = ctx.org?.corporate_id
 
   if (a === 'noop') return
-  if (a === 'auth') return b === 'login' ? askCode(ctx) : b === 'back' ? showWelcome(ctx) : showAccessInfo(ctx)
+  if (a === 'auth') {
+    if (b === 'login') return askCode(ctx)
+    if (b === 'back') return showWelcome(ctx)
+    if (b === 'contact') return showContact(ctx)
+    return showAccessInfo(ctx)
+  }
   if (!ctx.org) return showWelcome(ctx)
 
   switch (a) {

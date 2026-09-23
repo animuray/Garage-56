@@ -51,15 +51,19 @@ const nowHM = () => nowLocal().toISOString().slice(11, 16)
 async function getSettings() {
   const { rows } = await pool.query(
     `SELECT key, value FROM settings WHERE key = ANY($1)`,
-    [['name', 'address', 'phone', 'weekday_open', 'weekday_close', 'sat_open', 'sat_close',
+    [['name', 'address', 'phone', 'email', 'social_links', 'weekday_open', 'weekday_close', 'sat_open', 'sat_close',
       'sun_open', 'sun_close', 'sun_closed', 'slot_duration', 'booking_days_ahead']]
   )
   const s = {}
   rows.forEach(r => { s[r.key] = r.value })
+  let socialLinks = []
+  if (s.social_links) { try { socialLinks = JSON.parse(s.social_links) } catch {} }
   return {
     name: s.name || 'Garage 56',
     address: s.address || '',
     phone: s.phone || '',
+    email: s.email || '',
+    socialLinks,   // [{ name, url }] — the same contacts the site shows, set on the CRM's "Настройки" page
     weekday: [s.weekday_open || '09:00', s.weekday_close || '18:00'],
     sat: [s.sat_open || '09:00', s.sat_close || '17:00'],
     sun: [s.sun_open || '09:00', s.sun_close || '17:00'],
