@@ -297,25 +297,18 @@ function buildPdf(rep) {
       { k: 'n', t: '№', w: 20, a: 'center' },
       { k: 'when', t: 'Дата/время', w: 62, a: 'left' },
       { k: 'plate', t: 'Госномер', w: 60, a: 'left' },
-      { k: 'car', t: 'Автомобиль', w: 82, a: 'left' },
+      { k: 'car', t: 'Автомобиль', w: 102, a: 'left' },
       { k: 'mileage', t: 'Пробег', w: 50, a: 'right' },
-      { k: 'works', t: 'Выполненные работы', w: 222, a: 'left' },
-      { k: 'materials', t: 'Материалы', w: 118, a: 'left' },
-      { k: 'master', t: 'Мастер', w: 76, a: 'left' },
-      { k: 'total', t: 'Стоимость, ₸', w: 70, a: 'right' },
+      { k: 'works', t: 'Выполненные работы', w: 312, a: 'left' },
+      { k: 'master', t: 'Мастер', w: 94, a: 'left' },
+      { k: 'total', t: 'Стоимость, ₸', w: 80, a: 'right' },
     ]
     const worksCol = cols.find(c => c.k === 'works')
     const whenCol = cols.find(c => c.k === 'when')
     const SUB_FS = FS - 1
 
-    const materialsText = (l) => {
-      if (!l.materials) return '—'
-      const liters = l.liters ? `${fmtLiters(l.liters)} л` : ''
-      return liters ? l.materials.replace(/^Масло/, `Масло ${liters}`) : l.materials
-    }
     const cellText = (l, c) => {
       if (c.k === 'mileage' || c.k === 'total') return fmtInt(l[c.k])
-      if (c.k === 'materials') return materialsText(l)
       return String(l[c.k] ?? '') || '—'
     }
     // Two-line cells (a normal main line + a smaller grey second line): "when" (date, then time below)
