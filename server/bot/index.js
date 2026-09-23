@@ -766,15 +766,19 @@ async function showAppointments(ctx, tab = 'pending', offset = 0) {
   const cards = rows.map(a => {
     if (tab === 'pending') {
       list.text(`❌ Отменить ${fmtDate(a.date).slice(0, 5)} ${hm(a.time)} · ${a.license_plate}`, `apt|cancel|${a.id}`).row()
+    } else if (tab === 'active' && !a.cancel_requested) {
+      // once confirmed, the client can only ASK to cancel — an administrator decides in the CRM
+      list.text(`🗑 Запросить отмену ${fmtDate(a.date).slice(0, 5)} ${hm(a.time)} · ${a.license_plate}`, `apt|cancelreq|${a.id}`).row()
     }
     // flag today/tomorrow on upcoming work so it doesn't get lost among later dates
     const dayTag = tab !== 'done'
       ? (a.date === today ? ' · 🔥 <b>Сегодня</b>' : a.date === addDays(today, 1) ? ' · Завтра' : '')
       : ''
     const when = tab === 'done' ? fmtDate(a.date) : `${fmtDate(a.date)} · ${hm(a.time)}`
+    const cancelNote = tab === 'active' && a.cancel_requested ? '\n🕐 <i>Запрос на отмену отправлен — ждём решения администратора</i>' : ''
     // each order in its own quote block — reads as a distinct card instead of a wall of plain text
     return `<blockquote>🗓 <b>${when}</b>${dayTag}\n🚗 <b>${esc(a.car_make)} ${esc(a.car_model)}</b> · <code>${esc(a.license_plate)}</code>\n` +
-      `🔧 ${esc((a.services || []).join(', ') || '—')}\n${statusLine(a)}</blockquote>`
+      `🔧 ${esc((a.services || []).join(', ') || '—')}\n${statusLine(a)}${cancelNote}</blockquote>`
   })
   const pages = Math.max(1, Math.ceil(total / APT_PAGE))
   if (pages > 1) {
@@ -788,6 +792,59 @@ async function showAppointments(ctx, tab = 'pending', offset = 0) {
   await show(ctx,
     head('📋', 'Мои записи', `${APT_TABS[tab].tag} · ${total}`) + (cards.length ? '' : `\n${APT_TABS[tab].empty}`),
     kb, { inline: cards.length ? { text: cards.join('\n'), kb: list } : null })
+}
+
+// ─── Cancellation requests for confirmed/in-work orders (the client can only ask; an administrator
+// decides in the CRM) ──────────────────────────────────────────────────────────────────────────
+async function askCancelRequestReason(ctx, appointmentId, warn) {
+  const a = await data.getAppointment(appointmentId)
+  if (!a || a.corporate_id !== ctx.org.corporate_id) return show(ctx, 'Запись не найдена.', menuBtn(new InlineKeyboard()))
+  if (!['confirmed', 'in_progress'].includes(a.status)) return showAppointments(ctx, 'active')
+  if (await data.getPendingCancelRequest(a.id)) return showAppointments(ctx, 'active')
+  const s = sess(ctx)
+  s.mode = 'cancelreqreason'
+  s.draft = { kind: 'cancelreq', appointmentId: a.id, reason: '' }
+  await show(ctx,
+    (warn ? `⚠️ ${warn}\n\n` : '') +
+    head('🗑', 'Запрос на отмену записи', `${esc(a.car_make)} ${esc(a.car_model)} · ${esc(a.license_plate)}`) +
+    `\n🗓 <b>${weekday(a.date)}, ${longDate(a.date)} · ${hm(a.time)}</b>\n\n` +
+    'Запись уже подтверждена — отменить её может только администратор Garage 56, вы отправляете ему запрос.\n\n' +
+    '✍️ <b>Обязательно укажите причину отмены</b> — без неё запрос не отправить.',
+    new InlineKeyboard().text('◀️ Отмена', 'apts|active|0'),
+    { placeholder: 'Причина отмены' })
+}
+
+async function confirmCancelRequest(ctx) {
+  const d = sess(ctx).draft
+  if (d?.kind !== 'cancelreq') return show(ctx, '⌛ Сессия устарела.', menuBtn(new InlineKeyboard()))
+  const a = await data.getAppointment(d.appointmentId)
+  if (!a) return show(ctx, 'Запись не найдена.', menuBtn(new InlineKeyboard()))
+  sess(ctx).mode = null
+  await show(ctx,
+    head('🗑', 'Отправить запрос на отмену?') + '\n' +
+    `🚗 <b>${esc(a.car_make)} ${esc(a.car_model)}</b> · <code>${esc(a.license_plate)}</code>\n` +
+    `🗓 <b>${weekday(a.date)}, ${longDate(a.date)} · ${hm(a.time)}</b>\n` +
+    `📝 Причина: <i>«${esc(d.reason)}»</i>\n\n` +
+    '<i>До решения администратора запись остаётся в силе. Мы пришлём уведомление, когда запрос будет рассмотрен.</i>',
+    new InlineKeyboard().text('✅ Отправить запрос', 'acr|send').text('❌ Отмена', 'apts|active|0'))
+}
+
+async function sendCancelRequest(ctx) {
+  const d = sess(ctx).draft
+  if (d?.kind !== 'cancelreq') return show(ctx, '⌛ Сессия устарела.', menuBtn(new InlineKeyboard()))
+  const a = await data.getAppointment(d.appointmentId)
+  if (!a) return show(ctx, 'Запись не найдена.', menuBtn(new InlineKeyboard()))
+  const id = await data.createCancelRequest(ctx.org, a, d.reason, ctx.from.id)
+  sess(ctx).draft = null; sess(ctx).mode = null
+  if (!id) return showAppointments(ctx, 'active')   // somebody from the same company has already asked
+  sendPush({ kind: 'appointment_cancel_request', requestId: String(id), title: 'Запрос на отмену записи',
+    body: `${ctx.org.company_name} · ${a.car_make} ${a.car_model} · ${a.license_plate} · ${fmtDate(a.date)} в ${hm(a.time)} · ${d.reason}`,
+    url: '/crm/appointments' })
+  await show(ctx,
+    head('📨', 'Запрос на отмену отправлен') + '\n' +
+    `🚗 <b>${esc(a.car_make)} ${esc(a.car_model)}</b> · <code>${esc(a.license_plate)}</code>\n\n` +
+    'Администратор Garage 56 рассмотрит запрос. Запись остаётся в силе до решения — мы пришлём уведомление.',
+    menuBtn(new InlineKeyboard().text('📋 К записям', 'apts|active|0')))
 }
 
 // ─── Reports ─────────────────────────────────────────────────────────────────
@@ -917,6 +974,10 @@ async function route(ctx, cb) {
         }
         return showAppointments(ctx)
       }
+      if (b === 'cancelreq') return askCancelRequestReason(ctx, parseInt(c, 10))
+      return
+    case 'acr':
+      if (b === 'send') return sendCancelRequest(ctx)
       return
     case 'bk': {
       if (b === 'car') {
@@ -1032,6 +1093,14 @@ async function handleText(ctx) {
     return confirmDeleteRequest(ctx)
   }
 
+  // reason is mandatory here (unlike a car delete request) — an empty message is rejected
+  if (s.mode === 'cancelreqreason' && s.draft?.kind === 'cancelreq') {
+    const reason = text.slice(0, 300)
+    if (!reason) return askCancelRequestReason(ctx, s.draft.appointmentId, 'Укажите причину — без неё запрос не отправить.')
+    s.draft.reason = reason
+    return confirmCancelRequest(ctx)
+  }
+
   if (s.mode === 'comment' && bookDraft(ctx)) {
     bookDraft(ctx).comment = text.slice(0, 500)
     return showBookConfirm(ctx)
@@ -1097,6 +1166,22 @@ async function notifyCarDeletion(requestId) {
     }
     await sendToOrg(r.corporate_id, text)
   } catch (e) { console.error('[bot] car deletion notice error:', e.message) }
+}
+
+/** Tell the company the outcome of its "please cancel this confirmed order" request. */
+async function notifyCancelRequestDecision(requestId) {
+  try {
+    if (!bot) return
+    const r = await data.getCancelRequest(requestId)
+    if (!r || r.status === 'pending') return
+    const car = `🚗 <b>${esc(r.car_label)}</b> · <code>${esc(r.license_plate)}</code>`
+    const when = `🗓 ${fmtDate(r.appt_date)} · ${hm(r.appt_time)}`
+    const comment = r.admin_comment ? `\n💬 <i>«${esc(r.admin_comment)}»</i>` : ''
+    const text = r.status === 'approved'
+      ? head('❌', 'Запись отменена') + `\n${car}\n${when}\n\nЗапрос на отмену одобрен администратором Garage 56.`
+      : head('↩️', 'Запрос на отмену отклонён') + `\n${car}\n${when}\n\nЗапись остаётся в силе.${comment}`
+    await sendToOrg(r.corporate_id, text)
+  } catch (e) { console.error('[bot] cancel request notice error:', e.message) }
 }
 
 async function sendToOrg(corporateId, text) {
@@ -1193,7 +1278,7 @@ async function startBot(opts = {}) {
 }
 
 module.exports = {
-  startBot, notifyAppointment, notifyCarDeletion, buildBot,
+  startBot, notifyAppointment, notifyCarDeletion, notifyCancelRequestDecision, buildBot,
   attachBot: (b) => { bot = b }, // lets tests plug in a bot with a fake transport
   attachPush: (fn) => { sendPush = fn }, // …and capture what the bot tells the CRM staff
   getBotUsername: () => botUsername,

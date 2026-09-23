@@ -168,6 +168,25 @@ export interface CarDeleteRequest {
   resolvedAt: string | null;
 }
 
+// A corporate client asks (via the Telegram bot, reason mandatory) to cancel a CONFIRMED/in-work
+// appointment; only staff can approve. A still-pending appointment is cancelled directly, no request needed.
+export interface AppointmentCancelRequest {
+  id: string;
+  appointmentId: string;
+  corporateId: string;
+  companyName: string;
+  carLabel: string;
+  licensePlate: string;
+  date: string;
+  time: string;
+  reason: string;
+  requestedBy: string;
+  status: 'pending' | 'approved' | 'rejected';
+  adminComment: string;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
 export interface Master {
   id: string;
   name: string;

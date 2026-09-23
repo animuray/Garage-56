@@ -75,6 +75,7 @@ export default function CRMLayout() {
   const [pendingRequests, setPendingRequests] = useState(0)   // car delete/restore requests waiting for a decision
   const [newClients, setNewClients] = useState(0)             // clients added since the employee last opened "Клиенты"
   const [newBookings, setNewBookings] = useState(0)           // site / Telegram bookings since the employee last opened "Записи"
+  const [cancelRequests, setCancelRequests] = useState(0)     // taxi fleets asking to cancel a confirmed order
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const shownToasts = useRef<Set<string>>(new Set())            // a toast is shown once, even if the poll and the live stream both report it
   const toastTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
@@ -104,6 +105,7 @@ export default function CRMLayout() {
   useEffect(() => {
     if (!user || !['admin', 'owner'].includes(user.role)) return
     const loadRequests = () => api.getCarDeleteRequests('pending').then(r => setPendingRequests(r.length)).catch(() => {})
+    const loadCancelRequests = () => api.getAppointmentCancelRequests('pending').then(r => setCancelRequests(r.length)).catch(() => {})
     const loadClients = () => api.getNewClients().then(r => setNewClients(r.count)).catch(() => {})
     const loadBookings = () => api.getNewAppointments().then(r => {
       setNewBookings(r.count)
@@ -121,7 +123,7 @@ export default function CRMLayout() {
       }
       knownBookingIds.current = ids
     }).catch(() => {})
-    const loadAll = () => { loadRequests(); loadClients(); loadBookings() }
+    const loadAll = () => { loadRequests(); loadCancelRequests(); loadClients(); loadBookings() }
     loadAll()
 
     const stopLive = subscribeLive((e) => {
@@ -133,12 +135,14 @@ export default function CRMLayout() {
     })
     const timer = setInterval(loadAll, 60_000)
     window.addEventListener('car-requests-changed', loadRequests)
+    window.addEventListener('cancel-requests-changed', loadCancelRequests)
     window.addEventListener('clients-seen', loadClients)
     window.addEventListener('appointments-seen', loadBookings)
     return () => {
       stopLive()
       clearInterval(timer)
       window.removeEventListener('car-requests-changed', loadRequests)
+      window.removeEventListener('cancel-requests-changed', loadCancelRequests)
       window.removeEventListener('clients-seen', loadClients)
       window.removeEventListener('appointments-seen', loadBookings)
     }
@@ -147,7 +151,9 @@ export default function CRMLayout() {
   const badgeFor = (to: string): { count: number; title: string } | null => {
     if (to === '/crm/corporate' && pendingRequests > 0) return { count: pendingRequests, title: 'Запросы от таксопарков: удаление или восстановление автомобиля' }
     if (to === '/crm/clients' && newClients > 0) return { count: newClients, title: 'Новые клиенты' }
-    if (to === '/crm/appointments' && newBookings > 0) return { count: newBookings, title: 'Новые записи: с сайта и от таксопарков' }
+    if (to === '/crm/appointments' && newBookings + cancelRequests > 0) {
+      return { count: newBookings + cancelRequests, title: 'Новые записи и запросы на отмену от таксопарков' }
+    }
     return null
   }
 

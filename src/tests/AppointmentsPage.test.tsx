@@ -17,6 +17,7 @@ vi.mock('../api', () => ({
     getWarehouse: vi.fn().mockResolvedValue([]),
     getEmployees: vi.fn().mockResolvedValue([]),
     getCarBrands: vi.fn().mockResolvedValue([]),
+    getAppointmentCancelRequests: vi.fn().mockResolvedValue([]),
   },
 }))
 

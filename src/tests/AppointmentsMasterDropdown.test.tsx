@@ -32,6 +32,7 @@ vi.mock('../api', () => ({
     markAppointmentsSeen: vi.fn().mockResolvedValue(undefined),
     getCarBrands: vi.fn().mockResolvedValue([]),
     getServices: vi.fn().mockResolvedValue([]),
+    getAppointmentCancelRequests: vi.fn().mockResolvedValue([]),
   },
   API_BASE_URL: 'http://test',
 }))

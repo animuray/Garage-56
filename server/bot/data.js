@@ -311,19 +311,45 @@ async function listAppointments(corporateId, tab, offset = 0, limit = 5) {
   const { rows: [{ count }] } = await pool.query(`SELECT COUNT(*) FROM appointments a WHERE ${where}`, vals)
   const { rows } = await pool.query(`
     SELECT a.id, a.date, a.time, a.car_make, a.car_model, a.license_plate, a.services, a.status, a.total,
-           e.name AS master_name
+           e.name AS master_name,
+           EXISTS (SELECT 1 FROM appointment_cancel_requests r WHERE r.appointment_id = a.id AND r.status = 'pending') AS cancel_requested
     FROM appointments a LEFT JOIN employees e ON e.id = a.master_id
     WHERE ${where} ORDER BY ${order} LIMIT ${+limit} OFFSET ${+offset}`, vals)
   return { rows, total: +count }
 }
 
 // Once the admin confirms the appointment, the client no longer cancels it from the bot themselves —
-// only while it's still pending (call Garage 56 after that).
+// only while it's still pending. Past that it can only ASK to cancel (createCancelRequest below);
+// an administrator decides in the CRM.
 async function cancelAppointment(corporateId, id) {
   const { rows } = await pool.query(`
     UPDATE appointments a SET status = 'cancelled', cancel_reason = 'Отменено клиентом через Telegram'
     WHERE a.id = $2 AND ${OWN('a', '$1')} AND a.status = 'pending'
     RETURNING a.id, a.date, a.time, a.car_make, a.car_model, a.license_plate`, [corporateId, id])
+  return rows[0] || null
+}
+
+// ─── Cancellation requests for CONFIRMED/in-work appointments (the client can only ask; an
+// administrator decides in the CRM — same idea as car_delete_requests) ─────────────────────────
+async function getPendingCancelRequest(appointmentId) {
+  const { rows } = await pool.query(
+    `SELECT id, created_at FROM appointment_cancel_requests WHERE appointment_id = $1 AND status = 'pending'`, [appointmentId])
+  return rows[0] || null
+}
+
+/** reason is mandatory here (unlike a car delete request). Returns the new request id, or null if one is already open. */
+async function createCancelRequest(org, appt, reason, telegramId) {
+  const { rows } = await pool.query(`
+    INSERT INTO appointment_cancel_requests (appointment_id, corporate_id, car_label, license_plate, appt_date, appt_time, reason, requested_by, telegram_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    ON CONFLICT (appointment_id) WHERE status = 'pending' DO NOTHING
+    RETURNING id`,
+  [appt.id, org.corporate_id, `${appt.car_make} ${appt.car_model}`.trim(), appt.license_plate, appt.date, appt.time, reason, org.user_name || null, telegramId])
+  return rows[0]?.id ?? null
+}
+
+async function getCancelRequest(id) {
+  const { rows } = await pool.query('SELECT * FROM appointment_cancel_requests WHERE id = $1', [id])
   return rows[0] || null
 }
 
@@ -382,6 +408,7 @@ module.exports = {
   listCars, getCar, findCarByPlate, createCar,
   getCarBookSummary, getHistory,
   getPendingDeleteRequest, createDeleteRequest, getDeleteRequest,
+  getPendingCancelRequest, createCancelRequest, getCancelRequest,
   getTakenTimes, getBookedCounts, createAppointment, listAppointments, cancelAppointment, getAppointment,
   CORP_OF,
   getReportRows, getReportOverview, getOrgInfo,

@@ -4,7 +4,7 @@ import { API_BASE_URL } from '../api'
 // The moment something happens (a booking, a request from a taxi fleet, a new client…) the server pushes it here,
 // so the CRM can react at once instead of waiting for the next poll.
 export interface LiveEvent {
-  type: 'hello' | 'booking' | 'booking_cancelled' | 'car_request' | 'client' | 'bot_linked' | 'data' | string
+  type: 'hello' | 'booking' | 'booking_cancelled' | 'car_request' | 'appointment_cancel_request' | 'client' | 'bot_linked' | 'data' | string
   title?: string
   body?: string
   url?: string
@@ -13,7 +13,7 @@ export interface LiveEvent {
   bookingId?: string
   requestId?: string
   clientId?: string
-  what?: 'appointments' | 'car_requests' | string   // for the silent type 'data': which lists to reload
+  what?: 'appointments' | 'car_requests' | 'appointment_cancel_requests' | string   // for the silent type 'data': which lists to reload
   ts: number
 }
 

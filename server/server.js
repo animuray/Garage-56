@@ -518,6 +518,17 @@ app.patch('/api/appointments/:id', auth, async (req, res) => {
     const { rows: [prev] } = await pool.query('SELECT status, date, time FROM appointments WHERE id=$1', [req.params.id])
     vals.push(req.params.id)
     await pool.query(`UPDATE appointments SET ${fields.join(',')} WHERE id=$${i}`, vals)
+    // A pending "please cancel this" request is moot once the order is cancelled (the outcome it asked
+    // for already happened) or completed (the work is done) some other way — close it instead of leaving
+    // it stuck pending forever.
+    if (d.status === 'cancelled' || d.status === 'completed') {
+      const { rows: closedReqs } = await pool.query(
+        `UPDATE appointment_cancel_requests SET status=$2, resolved_at=NOW(), admin_comment=$3
+           WHERE appointment_id=$1 AND status='pending' RETURNING id`,
+        [req.params.id, d.status === 'cancelled' ? 'approved' : 'rejected',
+         d.status === 'cancelled' ? 'Отменено администратором' : 'Заказ выполнен администратором'])
+      closedReqs.forEach(r => telegramBot.notifyCancelRequestDecision(r.id))
+    }
     // Recalc client stats + write service history when appointment is completed
     if (d.status === 'completed') {
       let { rows: [apt] } = await pool.query(
@@ -1045,6 +1056,79 @@ app.post('/api/car-delete-requests/:id/reject', auth, async (req, res) => {
     if (!rowCount) return res.status(409).json({ error: 'Запрос уже обработан или не найден' })
     telegramBot.notifyCarDeletion(Number(req.params.id))
     broadcastLive({ type: 'data', what: 'car_requests' })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── Appointment cancellation requests: once confirmed, a taxi fleet can only ASK to cancel ───
+// (from the Telegram bot, with a mandatory reason) — an administrator decides here.
+// Table: appointment_cancel_requests.
+const mapCancelRequest = (r) => ({
+  id: String(r.id),
+  appointmentId: String(r.appointment_id),
+  corporateId: String(r.corporate_id),
+  companyName: r.company_name,
+  carLabel: r.car_label,
+  licensePlate: r.license_plate,
+  date: r.appt_date,
+  time: String(r.appt_time).slice(0, 5),
+  reason: r.reason,
+  requestedBy: r.requested_by || '',
+  status: r.status,
+  adminComment: r.admin_comment || '',
+  createdAt: r.created_at,
+  resolvedAt: r.resolved_at,
+})
+
+// ?status=pending (default) | all
+app.get('/api/appointment-cancel-requests', auth, async (req, res) => {
+  try {
+    if (!isStaffAdmin(req)) return res.status(403).json({ error: 'Недостаточно прав' })
+    const onlyPending = req.query.status !== 'all'
+    const { rows } = await pool.query(`
+      SELECT r.*, c.company_name FROM appointment_cancel_requests r
+      JOIN corporate_clients c ON c.id = r.corporate_id
+      ${onlyPending ? `WHERE r.status = 'pending'` : ''}
+      ORDER BY (r.status = 'pending') DESC, r.created_at DESC LIMIT 200`)
+    res.json(rows.map(mapCancelRequest))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Approve: the appointment itself is cancelled, with the taxi fleet's own reason recorded on it.
+app.post('/api/appointment-cancel-requests/:id/approve', auth, async (req, res) => {
+  const client = await pool.connect()
+  try {
+    if (!isStaffAdmin(req)) return res.status(403).json({ error: 'Недостаточно прав' })
+    await client.query('BEGIN')
+    const { rows: [r] } = await client.query(
+      `SELECT * FROM appointment_cancel_requests WHERE id=$1 AND status='pending' FOR UPDATE`, [req.params.id])
+    if (!r) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Запрос уже обработан или не найден' }) }
+    await client.query(
+      `UPDATE appointment_cancel_requests SET status='approved', resolved_at=NOW(), resolved_by=$2 WHERE id=$1`, [r.id, req.user.id])
+    await client.query(
+      `UPDATE appointments SET status='cancelled', cancel_reason=$2 WHERE id=$1 AND status NOT IN ('cancelled','completed')`,
+      [r.appointment_id, r.reason])
+    await client.query('COMMIT')
+    telegramBot.notifyCancelRequestDecision(r.id)
+    broadcastLive({ type: 'data', what: 'appointments' })
+    broadcastLive({ type: 'data', what: 'appointment_cancel_requests' })
+    res.json({ ok: true })
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {})
+    res.status(500).json({ error: e.message })
+  } finally { client.release() }
+})
+
+app.post('/api/appointment-cancel-requests/:id/reject', auth, async (req, res) => {
+  try {
+    if (!isStaffAdmin(req)) return res.status(403).json({ error: 'Недостаточно прав' })
+    const comment = telegramBotData.dbSafe(String(req.body?.comment || '')).trim().slice(0, 300)
+    const { rowCount } = await pool.query(
+      `UPDATE appointment_cancel_requests SET status='rejected', admin_comment=$2, resolved_at=NOW(), resolved_by=$3
+        WHERE id=$1 AND status='pending'`, [req.params.id, comment || null, req.user.id])
+    if (!rowCount) return res.status(409).json({ error: 'Запрос уже обработан или не найден' })
+    telegramBot.notifyCancelRequestDecision(Number(req.params.id))
+    broadcastLive({ type: 'data', what: 'appointment_cancel_requests' })
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1637,7 +1721,7 @@ app.get('/api/analytics', auth, async (req, res) => {
 })
 
 app.listen(PORT, async () => {
-  for (const file of ['005_oil_cost.sql', '006_car_delete_requests.sql', '007_car_archive.sql', '008_request_kind_new_clients.sql', '009_appointment_source.sql', '010_service_materials.sql']) {
+  for (const file of ['005_oil_cost.sql', '006_car_delete_requests.sql', '007_car_archive.sql', '008_request_kind_new_clients.sql', '009_appointment_source.sql', '010_service_materials.sql', '011_appointment_cancel_requests.sql']) {
     await pool.query(fs.readFileSync(path.join(__dirname, '../database/migrations', file), 'utf8'))
       .catch(e => console.error(`${file} migration:`, e.message))
   }

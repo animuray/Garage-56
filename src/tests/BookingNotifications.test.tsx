@@ -28,6 +28,7 @@ vi.mock('../api', () => ({
   api: {
     getPublicInfo: vi.fn().mockResolvedValue({ name: 'Garage 56' }),
     getCarDeleteRequests: vi.fn().mockResolvedValue([]),
+    getAppointmentCancelRequests: vi.fn().mockResolvedValue([]),
     getNewClients: vi.fn().mockResolvedValue({ count: 0, ids: [] }),
     getNewAppointments: vi.fn(),
     markAppointmentsSeen: vi.fn().mockResolvedValue(undefined),

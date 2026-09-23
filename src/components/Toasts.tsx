@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { X, Building2, Globe, CalendarX, Archive, ArchiveRestore, UserPlus, Link2, Bell } from 'lucide-react'
+import { X, Building2, Globe, CalendarX, Archive, ArchiveRestore, UserPlus, Link2, Bell, Ban } from 'lucide-react'
 import type { LiveEvent } from '../utils/liveEvents'
 
 // Pop-up notifications in the bottom-right corner of the CRM. They appear the moment the server reports an event
@@ -36,6 +36,8 @@ export function toastFromEvent(e: LiveEvent): ToastItem | null {
       return e.requestKind === 'restore'
         ? { ...base, ...GREEN, icon: <ArchiveRestore size={ICON} /> }
         : { ...base, ...ORANGE, icon: <Archive size={ICON} /> }
+    case 'appointment_cancel_request':
+      return { ...base, ...ORANGE, icon: <Ban size={ICON} /> }
     case 'client':
       return { ...base, ...NEUTRAL, icon: <UserPlus size={ICON} /> }
     case 'bot_linked':

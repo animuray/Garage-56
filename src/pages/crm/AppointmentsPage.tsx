@@ -1,15 +1,95 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Search, X, Check, Plus, ChevronDown } from 'lucide-react'
+import { Search, X, Check, Plus, ChevronDown, Ban, CalendarX } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
-import type { Appointment, AppointmentStatus } from '../../types'
+import type { Appointment, AppointmentStatus, AppointmentCancelRequest } from '../../types'
 import { appointmentRowClass } from '../../utils/appointmentStyle'
 import { OrderTag, TaxiMark } from '../../components/OrderTags'
 import { formatMoney } from '../../utils/pricing'
 import { CompleteOrderModal } from '../../components/CompleteOrderModal'
 import { BrandLogo } from '../../components/CarFormModal'
 import DatePicker from '../../components/DatePicker'
+import { ActionDialog, CarSummary } from '../../components/ActionDialog'
+import { onLive } from '../../utils/liveEvents'
 import { api } from '../../api'
+
+const fmtDateTime = (iso: string) =>
+  new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+// A taxi fleet can only ASK to cancel a CONFIRMED/in-work order (Telegram bot, reason mandatory) —
+// the decision is made here, same idea as car delete requests in CorporatePage.
+function CancelRequestsPanel({ requests, onDecided }: { requests: AppointmentCancelRequest[]; onDecided: () => void }) {
+  const [dialog, setDialog] = useState<{ kind: 'approve' | 'reject'; r: AppointmentCancelRequest } | null>(null)
+  const pending = requests.filter(r => r.status === 'pending')
+  if (pending.length === 0) return null
+
+  return (
+    <div className="mb-4 space-y-2.5">
+      <div className="text-xs font-semibold text-orange-400 uppercase tracking-wide flex items-center gap-1.5">
+        <Ban size={13} /> Запросы на отмену от таксопарков ({pending.length})
+      </div>
+      {pending.map(r => (
+        <div key={r.id} className="rounded-xl border border-orange-500/30 bg-orange-500/[0.04] p-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-white text-sm font-medium truncate">{r.companyName} · {r.carLabel} · <span className="text-orange-400">{r.licensePlate}</span></div>
+            <div className="text-gray-500 text-xs mt-0.5">
+              {r.date.split('-').reverse().join('.')} {r.time} · {r.requestedBy ? `${r.requestedBy} · ` : ''}{fmtDateTime(r.createdAt)}
+            </div>
+            <div className="text-gray-300 text-xs mt-1">Причина: «{r.reason}»</div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button onClick={() => setDialog({ kind: 'reject', r })}
+              className="px-3 py-2 text-xs rounded-lg border border-[#2a2a2a] text-gray-300 hover:text-white hover:border-[#3a3a3a] transition-colors font-medium">
+              Отклонить
+            </button>
+            <button onClick={() => setDialog({ kind: 'approve', r })}
+              className="px-3 py-2 text-xs rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/25 transition-colors font-medium">
+              Отменить запись
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {dialog?.kind === 'approve' && (
+        <ActionDialog
+          tone="danger" icon={<CalendarX size={20} />}
+          title="Отменить запись?"
+          subtitle={`Запрос от «${dialog.r.companyName}»`}
+          points={[
+            { kind: 'warn', text: 'Запись перейдёт в статус «Отменено», указанное время освободится.' },
+            { kind: 'info', text: 'Причина клиента запишется как причина отмены.' },
+            { kind: 'info', text: 'Таксопарк получит уведомление в Telegram.' },
+          ]}
+          confirmLabel="Отменить запись"
+          onConfirm={async () => { await api.approveAppointmentCancelRequest(dialog.r.id); onDecided(); setDialog(null) }}
+          onCancel={() => setDialog(null)}
+        >
+          <CarSummary plate={dialog.r.licensePlate} label={dialog.r.carLabel}
+            lines={[`${dialog.r.date.split('-').reverse().join('.')} ${dialog.r.time}`, <span className="text-gray-300">Причина: «{dialog.r.reason}»</span>]} />
+        </ActionDialog>
+      )}
+
+      {dialog?.kind === 'reject' && (
+        <ActionDialog
+          tone="neutral" icon={<Ban size={20} />}
+          title="Отклонить запрос на отмену?"
+          subtitle={`Запрос от «${dialog.r.companyName}»`}
+          textarea={{
+            label: 'Комментарий для таксопарка (необязательно)',
+            placeholder: 'Например: мастер уже выехал по этой заявке',
+            hint: 'Клиент получит его в Telegram вместе с уведомлением. Запись остаётся в силе.',
+          }}
+          confirmLabel="Отклонить запрос"
+          onConfirm={async (comment) => { await api.rejectAppointmentCancelRequest(dialog.r.id, comment); onDecided(); setDialog(null) }}
+          onCancel={() => setDialog(null)}
+        >
+          <CarSummary plate={dialog.r.licensePlate} label={dialog.r.carLabel}
+            lines={[`${dialog.r.date.split('-').reverse().join('.')} ${dialog.r.time}`, <span className="text-gray-300">Причина: «{dialog.r.reason}»</span>]} />
+        </ActionDialog>
+      )}
+    </div>
+  )
+}
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-yellow-500/20 text-yellow-400',
@@ -177,6 +257,19 @@ export default function AppointmentsPage() {
   const [masterDropdownPos, setMasterDropdownPos] = useState({ top: 0, left: 0 })
   // bookings from the site / Telegram that arrived since this employee last opened the page (kept for this visit)
   const [newBookings, setNewBookings] = useState<Record<string, 'site' | 'telegram'>>({})
+  // requests from taxi fleets to cancel an already-confirmed order (Telegram bot) — staff decide here
+  const [cancelRequests, setCancelRequests] = useState<AppointmentCancelRequest[]>([])
+
+  const loadCancelRequests = () => api.getAppointmentCancelRequests('pending').then(setCancelRequests).catch(() => {})
+  useEffect(() => { loadCancelRequests() }, [])
+  // a new request from a taxi fleet (or a decision made in another tab) shows up here at once
+  useEffect(() => onLive((e) => {
+    if (e.type === 'appointment_cancel_request' || (e.type === 'data' && e.what === 'appointment_cancel_requests')) loadCancelRequests()
+  }), [])
+  const onCancelRequestDecided = () => {
+    loadCancelRequests()
+    window.dispatchEvent(new Event('cancel-requests-changed'))   // updates the sidebar counter
+  }
 
   // Runs when the page opens and again after every automatic refresh of the list (every 30 s), so a booking that
   // arrives while the page is open gets its "new" mark too. Marked bookings stay marked until the page is left.
@@ -230,6 +323,8 @@ export default function AppointmentsPage() {
       <div className="mb-5">
         <h1 className="text-xl font-bold text-white">Записи</h1>
       </div>
+
+      <CancelRequestsPanel requests={cancelRequests} onDecided={onCancelRequestDecided} />
 
       {/* Status tabs */}
       <div className="flex gap-2 mb-4">

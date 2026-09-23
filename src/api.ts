@@ -1,4 +1,4 @@
-import type { CarDeleteRequest, Car } from './types'
+import type { CarDeleteRequest, AppointmentCancelRequest, Car } from './types'
 
 const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
 export const API_BASE_URL = BASE_URL
@@ -107,6 +107,14 @@ export const api = {
     request<void>(`/api/car-delete-requests/${id}/approve`, { method: 'POST' }),
   rejectCarDeleteRequest: (id: string, comment: string) =>
     request<void>(`/api/car-delete-requests/${id}/reject`, { method: 'POST', body: JSON.stringify({ comment }) }),
+
+  // Requests from corporate clients (Telegram bot): cancel a CONFIRMED/in-work appointment
+  getAppointmentCancelRequests: (status: 'pending' | 'all' = 'pending') =>
+    request<AppointmentCancelRequest[]>(`/api/appointment-cancel-requests?status=${status}`),
+  approveAppointmentCancelRequest: (id: string) =>
+    request<void>(`/api/appointment-cancel-requests/${id}/approve`, { method: 'POST' }),
+  rejectAppointmentCancelRequest: (id: string, comment: string) =>
+    request<void>(`/api/appointment-cancel-requests/${id}/reject`, { method: 'POST', body: JSON.stringify({ comment }) }),
   getCorporateTelegram: (id: string) =>
     request<{
       botUsername: string | null
