@@ -26,9 +26,7 @@ export function CompleteOrderModal({ apt, onClose, onSave }: {
   const [rows, setRows] = useState<Row[]>([])
   const [pickId, setPickId] = useState('')
   const [notes, setNotes] = useState('')
-  const [servicePrices, setServicePrices] = useState<Record<string, string>>(
-    Object.fromEntries((apt.services ?? []).map(s => [s, '']))
-  )
+  const [laborPrice, setLaborPrice] = useState('')   // one total for all the work, not priced per service
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -41,7 +39,7 @@ export function CompleteOrderModal({ apt, onClose, onSave }: {
     const item = warehouse.find(i => i.id === r.itemId)
     return { price: item?.price ?? 0, quantity: Number(r.quantity) || 0 }
   })
-  const { servicesTotal, itemsCost, total } = calcOrderTotal(servicePrices, undefined, 0, extraItems)
+  const { servicesTotal, itemsCost, total } = calcOrderTotal({ labor: laborPrice }, undefined, 0, extraItems)
 
   const addRow = () => {
     if (!pickId) return
@@ -64,7 +62,8 @@ export function CompleteOrderModal({ apt, onClose, onSave }: {
 
   const handleSave = async () => {
     if (validationError || saving) return
-    const parsedPrices = Object.fromEntries(Object.entries(servicePrices).map(([k, v]) => [k, Number(v) || 0]))
+    // stored as a single-line "breakdown" — one entry, the whole labor cost — instead of one per service
+    const parsedPrices = { 'Работа мастера': Number(laborPrice) || 0 }
     const items: UsedItem[] = rows.map(r => {
       const w = warehouse.find(i => i.id === r.itemId)!
       const quantity = Number(r.quantity) || 0
@@ -182,25 +181,25 @@ export function CompleteOrderModal({ apt, onClose, onSave }: {
               className="input-field text-sm resize-none" rows={2} placeholder="Комментарий мастера..." />
           </div>
 
-          {/* Per-service labour prices — separate from the materials above */}
+          {/* One total for the labor — the services below are shown just so the master sees what
+              this order was for, not so each one gets its own price */}
           <div>
             <div className="flex items-center gap-1.5 mb-0.5">
               <Wrench size={13} className="text-gray-500" />
               <Caption>Стоимость работы мастера</Caption>
             </div>
-            <div className="text-xs text-gray-600 mb-2">Необязательно. Оплата за саму работу — материалы уже посчитаны выше</div>
-            <div className="space-y-2">
-              {(apt.services ?? []).map(s => (
-                <div key={s}>
-                  <label className="text-xs text-gray-500 block mb-1">{s}</label>
-                  <div className="flex items-center gap-2">
-                    <input type="number" min="0" value={servicePrices[s] ?? ''}
-                      onChange={e => setServicePrices(prev => ({ ...prev, [s]: e.target.value }))}
-                      className="input-field flex-1" placeholder="Стоимость работы" />
-                    <span className="text-gray-500 text-sm shrink-0">₸</span>
-                  </div>
-                </div>
-              ))}
+            <div className="text-xs text-gray-600 mb-2">Необязательно. Одна общая сумма за всю работу — материалы уже посчитаны выше</div>
+            {(apt.services ?? []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {apt.services.map(s => (
+                  <span key={s} className="text-xs bg-[#111] border border-[#2a2a2a] text-gray-300 px-2 py-1 rounded-md">{s}</span>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <input type="number" min="0" value={laborPrice} onChange={e => setLaborPrice(e.target.value)}
+                className="input-field flex-1" placeholder="Общая стоимость работы" />
+              <span className="text-gray-500 text-sm shrink-0">₸</span>
             </div>
             <div className="mt-3 pt-3 border-t border-[#2a2a2a] space-y-1.5 text-sm">
               <div className="flex justify-between items-center">
