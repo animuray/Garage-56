@@ -263,9 +263,9 @@ async function showCarList(ctx, mode, offset = 0) {
     rows.forEach(c => list.text(`🚗 ${c.make} ${c.model} · ${c.license_plate}`, pick + c.id).row())
     const pages = Math.max(1, Math.ceil(total / PAGE)), page = Math.floor(offset / PAGE)
     if (pages > 1) {
-      if (page > 0) list.text('◀️ Назад', `cl|${mode}|${offset - PAGE}`)
+      list.text('◀️ Назад', page > 0 ? `cl|${mode}|${offset - PAGE}` : 'noop')
       list.text(`${page + 1} / ${pages}`, 'noop')
-      if (page < pages - 1) list.text('Вперёд ▶️', `cl|${mode}|${offset + PAGE}`)
+      list.text('Вперёд ▶️', page < pages - 1 ? `cl|${mode}|${offset + PAGE}` : 'noop')
     }
     inline = { text: `👇 <b>${hint}</b>`, kb: list }
   }
@@ -595,14 +595,12 @@ function bookHead(d, step, title) {
 async function showBookStart(ctx) {
   const s = sess(ctx); s.mode = null; s.draft = null; s.q = ''
   const { total } = await data.listCars(ctx.org.corporate_id, { limit: 1 })
-  const { total: activeCount } = await data.listAppointments(ctx.org.corporate_id, 'active', 0, 1)
   if (!total) {
     return show(ctx, head('📅', 'Записаться') + '\nСначала добавьте автомобиль в автопарк.',
       menuBtn(new InlineKeyboard().text('➕ Добавить автомобиль', 'car|add|book')))
   }
-  const kb = new InlineKeyboard().text('🚗 Выбрать автомобиль', 'cl|book|0')
-  if (activeCount) kb.text(`📋 Мои записи (${activeCount})`, 'apts')
-  menuBtn(kb)
+  // "Мои записи" is already one tap away from the home menu — no need to repeat it here
+  const kb = menuBtn(new InlineKeyboard().text('🚗 Выбрать автомобиль', 'cl|book|0'))
   await show(ctx, head('📅', 'Записаться', 'Быстрая запись за 4 шага') +
     '\n1️⃣ Дата\n2️⃣ Время\n3️⃣ Услуги\n4️⃣ Пожелания\n\nМы подтвердим запись и пришлём уведомление.', kb)
 }
@@ -630,9 +628,9 @@ async function showCalendar(ctx, page = 0, warn) {
   })
   if (pages > 1) {
     list.row()
-    if (page > 0) list.text('◀️ Ранее', `bk|cal|${page - 1}`)
+    list.text('◀️ Ранее', page > 0 ? `bk|cal|${page - 1}` : 'noop')
     list.text(`${page + 1} / ${pages}`, 'noop')
-    if (page < pages - 1) list.text('Позже ▶️', `bk|cal|${page + 1}`)
+    list.text('Позже ▶️', page < pages - 1 ? `bk|cal|${page + 1}` : 'noop')
   }
   const kb = new InlineKeyboard().text('◀️ Другой автомобиль', 'cl|book|0').text('❌ Отмена', 'menu')
   await show(ctx, (warn ? `⚠️ ${warn}\n\n` : '') + bookHead(d, 1, 'дата') +
@@ -760,10 +758,12 @@ async function showAppointments(ctx, tab = 'active', offset = 0) {
   })
   const pages = Math.max(1, Math.ceil(total / APT_PAGE))
   if (pages > 1) {
+    // "Назад"/"Вперёд" always present (just inert at the ends) — otherwise the page label
+    // jumps left/right depending on which buttons happen to exist on that page
     const page = Math.floor(offset / APT_PAGE)
-    if (page > 0) kb.text('◀️ Назад', `apts|${tab}|${offset - APT_PAGE}`)
+    kb.text('◀️ Назад', page > 0 ? `apts|${tab}|${offset - APT_PAGE}` : 'noop')
     kb.text(`Страница ${page + 1} из ${pages}`, 'noop')
-    if (page < pages - 1) kb.text('Вперёд ▶️', `apts|${tab}|${offset + APT_PAGE}`)
+    kb.text('Вперёд ▶️', page < pages - 1 ? `apts|${tab}|${offset + APT_PAGE}` : 'noop')
     kb.row()
   }
   kb.text('📅 Новая запись', 'book')
@@ -792,10 +792,12 @@ async function showReportMenu(ctx, year) {
     list.text(months[m] ? `${MONTHS[m - 1]} · ${months[m]}` : MONTHS[m - 1], `rep|m|${year}-${pad2(m)}`)
     if (m % 3 === 0 && m < last) list.row()
   }
+  // the year switcher keeps 3 buttons at both ends of the range too, so "Весь ... год" doesn't
+  // jump sideways depending on whether a neighbouring year happens to exist
   list.row()
-  if (year > firstYear) list.text(`◀️ ${year - 1}`, `rep|y|${year - 1}`)
+  list.text(year > firstYear ? `◀️ ${year - 1}` : '·', year > firstYear ? `rep|y|${year - 1}` : 'noop')
   list.text(`📦 Весь ${year} год`, `rep|yr|${year}`)
-  if (year < curYear) list.text(`${year + 1} ▶️`, `rep|y|${year + 1}`)
+  list.text(year < curYear ? `${year + 1} ▶️` : '·', year < curYear ? `rep|y|${year + 1}` : 'noop')
 
   const kb = menuBtn(new InlineKeyboard().text('🗓 Свой период', 'rep|custom'))
   const total = Object.values(months).reduce((s, n) => s + n, 0)
