@@ -741,13 +741,19 @@ function statusLine(a) {
 async function showAppointments(ctx, tab = 'active', offset = 0) {
   if (tab !== 'done') tab = 'active'
   const { rows, total } = await data.listAppointments(ctx.org.corporate_id, tab, offset, APT_PAGE)
+  // the bottom panel is small on phones — keep it to just the tab switch + Меню, a fixed height that
+  // never grows with the number of appointments
   const kb = new InlineKeyboard()
     .text(`${tab === 'active' ? '• ' : ''}Активные`, 'apts|active|0')
-    .text(`${tab === 'done' ? '• ' : ''}Завершённые`, 'apts|done|0').row()
+    .text(`${tab === 'done' ? '• ' : ''}Завершённые`, 'apts|done|0')
+  menuBtn(kb)
   const today = data.todayISO()
+  // cards + their "Отменить"/pager buttons live in the chat as an inline list (like the car list,
+  // dates, times…) instead of the bottom panel, so the panel doesn't balloon with one row per record
+  const list = new InlineKeyboard()
   const cards = rows.map(a => {
     if (a.status === 'pending' || a.status === 'confirmed') {
-      kb.text(`❌ Отменить ${fmtDate(a.date).slice(0, 5)} ${hm(a.time)} · ${a.license_plate}`, `apt|cancel|${a.id}`).row()
+      list.text(`❌ Отменить ${fmtDate(a.date).slice(0, 5)} ${hm(a.time)} · ${a.license_plate}`, `apt|cancel|${a.id}`).row()
     }
     // Active tab: flag today/tomorrow so it doesn't get lost among later dates
     const dayTag = tab === 'active'
@@ -763,16 +769,14 @@ async function showAppointments(ctx, tab = 'active', offset = 0) {
     // "Назад"/"Вперёд" always present (just inert at the ends) — otherwise the page label
     // jumps left/right depending on which buttons happen to exist on that page
     const page = Math.floor(offset / APT_PAGE)
-    kb.text('◀️ Назад', page > 0 ? `apts|${tab}|${offset - APT_PAGE}` : 'noop')
-    kb.text(`Страница ${page + 1} из ${pages}`, 'noop')
-    kb.text('Вперёд ▶️', page < pages - 1 ? `apts|${tab}|${offset + APT_PAGE}` : 'noop')
-    kb.row()
+    list.text('◀️ Назад', page > 0 ? `apts|${tab}|${offset - APT_PAGE}` : 'noop')
+    list.text(`Страница ${page + 1} из ${pages}`, 'noop')
+    list.text('Вперёд ▶️', page < pages - 1 ? `apts|${tab}|${offset + APT_PAGE}` : 'noop')
   }
-  menuBtn(kb)
   const empty = tab === 'done' ? 'Завершённых работ пока нет.' : 'Активных записей нет.'
   await show(ctx,
-    head('📋', 'Мои записи', `${tab === 'done' ? 'завершённые' : 'активные'} · ${total}`) + '\n' +
-    (cards.length ? cards.join('\n') : empty), kb)
+    head('📋', 'Мои записи', `${tab === 'done' ? 'завершённые' : 'активные'} · ${total}`) + (cards.length ? '' : `\n${empty}`),
+    kb, { inline: cards.length ? { text: cards.join('\n'), kb: list } : null })
 }
 
 // ─── Reports ─────────────────────────────────────────────────────────────────
