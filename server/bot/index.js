@@ -134,16 +134,17 @@ const menuBtn = (kb) => kb.row().text('🏠 Меню', 'menu')
 // Main sections (the buttons of the home screen)
 const NAV = {
   cars: '🚗 Мои автомобили', book: '📅 Записаться', apts: '📋 Мои записи',
-  tb: '📖 Техническая книжка', rep: '📊 Отчёты', org: '🏢 Данные таксопарка',
+  tb: '📖 Техническая книжка', rep: '📊 Отчёты', org: '🏢 Данные таксопарка', contact: '📞 Связаться',
 }
 const NAV_ACTION = {
   [NAV.cars]: 'cl|cars|0', [NAV.book]: 'book', [NAV.apts]: 'apts',
-  [NAV.tb]: 'cl|tb|0', [NAV.rep]: 'rep', [NAV.org]: 'org',
+  [NAV.tb]: 'cl|tb|0', [NAV.rep]: 'rep', [NAV.org]: 'org', [NAV.contact]: 'auth|contact',
 }
 const homeKeyboard = () => new InlineKeyboard()
   .text(NAV.cars, NAV_ACTION[NAV.cars]).text(NAV.book, NAV_ACTION[NAV.book]).row()
   .text(NAV.apts, NAV_ACTION[NAV.apts]).text(NAV.tb, NAV_ACTION[NAV.tb]).row()
-  .text(NAV.rep, NAV_ACTION[NAV.rep]).text(NAV.org, NAV_ACTION[NAV.org])
+  .text(NAV.rep, NAV_ACTION[NAV.rep]).text(NAV.org, NAV_ACTION[NAV.org]).row()
+  .text(NAV.contact, NAV_ACTION[NAV.contact])
 
 // ─── Authorization ───────────────────────────────────────────────────────────
 async function showWelcome(ctx, opts) {
@@ -173,7 +174,9 @@ async function showAccessInfo(ctx) {
     '\nНет кода или не знаете, к кому обратиться, — нажмите «Связаться».\n\nПолучили код — нажмите кнопку ниже.', kb)
 }
 
-/** Phone/email/address/social — whatever is filled in on the CRM's "Настройки" page. */
+/** Phone/email/address/social — whatever is filled in on the CRM's "Настройки" page.
+ * Reachable both before login (from the welcome/access screens) and from the main menu once
+ * connected — the way back differs: "Назад" to the access screen, or just "Меню" home. */
 async function showContact(ctx) {
   const st = await data.getSettings()
   const lines = [
@@ -182,7 +185,7 @@ async function showContact(ctx) {
     st.address && `📍 ${esc(st.address)}`,
     ...(st.socialLinks || []).filter(l => l?.name && l?.url).map(l => `🔗 ${esc(l.name)}: ${esc(l.url)}`),
   ].filter(Boolean)
-  const kb = new InlineKeyboard().text('◀️ Назад', 'auth|access')
+  const kb = ctx.org ? menuBtn(new InlineKeyboard()) : new InlineKeyboard().text('◀️ Назад', 'auth|access')
   await show(ctx,
     head('📞', 'Связаться с Garage 56') +
     (lines.length
